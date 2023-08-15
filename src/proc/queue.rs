@@ -1,65 +1,32 @@
+use std::sync::Arc;
 use axum::extract::State;
 use axum::Json;
 use axum::http::StatusCode;
-use futures_util::future::join_all;
-use uuid::Uuid;
-use serde::{Deserialize, Serialize};
-use crate::worker::Worker;
+use flume::Sender;
+use crate::proc::task::{Task, TaskID};
+use crate::proc::worker::WorkerPool;
 
-#[derive(Deserialize, Serialize)]
-pub struct SubmitTask {
-    pub(crate) description: String,
-}
-
-impl From<SubmitTask> for Task {
-    fn from(submit: SubmitTask) -> Self {
-        Task {
-            id: Uuid::new_v4(),
-            description: submit.description,
-            done: false,
-        }
-    }
-}
-
-pub type TaskID = Uuid;
-
-#[derive(Clone, Debug)]
-pub struct Task {
-    pub id: TaskID,
-    pub description: String,
-    pub done: bool,
-}
-
-/// Dummy processing function that will just sleep for 5 seconds.
-async fn process_task(task: Box<Task>) {
-    tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
-    tracing::info!("Task {:?} processed", task);
-}
-
-pub enum QueueCommand {
-    Append(Box<Task>),
+pub enum QueueCommand<T: Task> {
+    Append(Box<T>),
     Delete(TaskID),
     Process,
     Clear,
+    Stop,
 }
 
-#[derive(Clone, Debug)]
-pub struct Queue {
-    pub queue_sender: flume::Sender<QueueCommand>,
-    pub worker_pool: Vec<Worker>,
+#[derive(Debug)]
+pub struct Queue<T: Task> {
+    pub queue_sender: Sender<QueueCommand<T>>,
+    pub worker_pool: WorkerPool<T>,
 }
 
-impl Queue {
+impl<T: Task + 'static> Queue<T> {
     pub(crate) fn new(n_workers: usize) -> Self {
-        let (queue_sender, queue_receiver) = flume::unbounded();
+        let (queue_sender, queue_receiver) = flume::unbounded::<QueueCommand<T>>();
 
         let (worker_sender, worker_receiver) = flume::bounded(n_workers);
 
-        let worker_pool = (0..n_workers).map(|_| {
-            let worker_receiver = worker_receiver.clone();
-            Worker::new(worker_receiver)
-        }).collect::<Vec<_>>();
-
+        let worker_pool = WorkerPool::new(n_workers, worker_receiver);
 
         // Launch background thread
         tokio::spawn(async move {
@@ -69,7 +36,7 @@ impl Queue {
                     QueueCommand::Append(task) => {
                         tracing::info!("Appending task {:?}", task);
                         tasks.push(task.clone()); // TODO: remove clone
-                        if let Ok(_) = worker_sender.send_async(task).await {
+                        if (worker_sender.send_async(task).await).is_ok() {
                             tracing::info!("Task sent to worker");
                         } else {
                             tracing::error!("Failed to send task to worker");
@@ -77,7 +44,7 @@ impl Queue {
                     }
                     QueueCommand::Delete(id) => {
                         tracing::info!("Deleting task {}", id);
-                        tasks.retain(|task| task.id != id);
+                        tasks.retain(|task| task.get_id() != id);
                     }
                     QueueCommand::Clear => {
                         tracing::info!("Clearing all tasks");
@@ -86,72 +53,90 @@ impl Queue {
                     QueueCommand::Process => {
                         tracing::info!("Processing tasks");
                     }
+                    QueueCommand::Stop => {
+                        tracing::info!("Stopping queue");
+                        // Stop receiving new tasks
+                        drop(worker_sender);
+                        // Wait for all running tasks to finish
+                        while (queue_receiver.recv_async().await).is_ok() {}
+                        break;
+                    }
                 }
             }
         });
         Self { queue_sender, worker_pool }
     }
 
-    pub(crate) fn append(&self, task: Box<Task>) {
-        tracing::info!("Appending task {:?}", task);
+    pub(crate) fn append(&self, task: Box<T>) -> Result<(), flume::SendError<QueueCommand<T>>> {
+        self.queue_sender.send(QueueCommand::Append(task))?;
+        Ok(())
     }
 
-    fn delete(&self, id: TaskID) -> Result<(), flume::SendError<QueueCommand>> {
-        tracing::info!("Deleting task {}", id);
+    fn delete(&self, id: TaskID) -> Result<(), flume::SendError<QueueCommand<T>>> {
         self.queue_sender.send(QueueCommand::Delete(id))?;
         Ok(())
     }
 
-    fn clear(&self) -> Result<(), flume::SendError<QueueCommand>> {
-        tracing::info!("Clearing all tasks");
+    fn clear(&self) -> Result<(), flume::SendError<QueueCommand<T>>> {
         self.queue_sender.send(QueueCommand::Clear)?;
         Ok(())
     }
 
-    fn process(&self) -> Result<(), flume::SendError<QueueCommand>> {
-        tracing::info!("Processing tasks");
+    fn process(&self) -> Result<(), flume::SendError<QueueCommand<T>>> {
         self.queue_sender.send(QueueCommand::Process)?;
+        Ok(())
+    }
+
+    pub(crate) fn stop(&self) -> Result<(), flume::SendError<QueueCommand<T>>> {
+        self.queue_sender.send(QueueCommand::Stop)?;
+        Ok(())
+    }
+
+    pub(crate) async fn join(self) -> Result<(), tokio::task::JoinError> {
+        self.stop().expect("Failed to stop queue");
+        self.worker_pool.join().await?;
+        // self.join_handle.await?; // TODO: Why does this block?
         Ok(())
     }
 }
 
-pub async fn create_task(
-    State(state): State<Queue>,
-    Json(submit): Json<SubmitTask>,
+pub async fn create_task<T: Task + 'static>(
+    State(queue): State<Arc<Queue<T>>>,
+    Json(submit): Json<T::Input>,
 ) -> StatusCode {
     tracing::info!("Creating a new task");
-    if let Ok(task) = Task::try_from(submit) {
-        state.append(Box::new(task));
+    if queue.append(Box::new(T::from_input(submit))).is_ok() {
         StatusCode::CREATED
     } else {
-        StatusCode::BAD_REQUEST
+        StatusCode::INTERNAL_SERVER_ERROR
     }
 }
 
-pub async fn delete_task(
-    State(state): State<Queue>,
-    path: axum::extract::Path<TaskID>,
-) -> StatusCode {
-    tracing::info!("Deleting task {}", path.0);
-    if let Err(_) = state.delete(path.0) {
-        StatusCode::NOT_FOUND
-    } else {
-        StatusCode::OK
-    }
-}
+// #[debug_handler]
+// pub async fn delete_task(
+//     State(state): State<Arc<Queue>>,
+//     path: Path<TaskID>,
+// ) -> StatusCode {
+//     tracing::info!("Deleting task {}", path.0);
+//     if let Err(_) = state.delete(path.0) {
+//         StatusCode::NOT_FOUND
+//     } else {
+//         StatusCode::OK
+//     }
+// }
 
-pub async fn clear_tasks(State(state): State<Queue>) -> StatusCode {
+pub async fn clear_tasks<T: Task + 'static>(State(state): State<Arc<Queue<T>>>) -> StatusCode {
     tracing::info!("Clearing all tasks");
-    if let Err(_) = state.clear() {
+    if state.clear().is_err() {
         StatusCode::INTERNAL_SERVER_ERROR
     } else {
         StatusCode::OK
     }
 }
 
-pub async fn process_tasks(State(state): State<Queue>) -> StatusCode {
+pub async fn process_tasks<T: Task + 'static>(State(state): State<Arc<Queue<T>>>) -> StatusCode {
     tracing::info!("Processing tasks");
-    if let Err(_) = state.process() {
+    if state.process().is_err() {
         StatusCode::INTERNAL_SERVER_ERROR
     } else {
         StatusCode::OK

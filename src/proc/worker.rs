@@ -1,63 +1,60 @@
-use std::thread::sleep;
-use std::time::Duration;
 use flume::Receiver;
-use tokio::task::spawn_blocking;
-use crate::queue::Task;
+use tokio::task::{JoinHandle, spawn_blocking};
+use crate::proc::task::{Task};
 
-#[derive(Clone, Debug)]
-pub struct Worker {
-    pub receiver: Receiver<Box<Task>>,
+#[derive(Debug)]
+pub struct Worker<T: Task> {
+    pub receiver: Receiver<Box<T>>,
+    join_handle: JoinHandle<()>,
 }
 
-impl Worker {
-    pub(crate) fn new(receiver: Receiver<Box<Task>>) -> Self {
+impl<T: Task + 'static> Worker<T> {
+    pub(crate) fn new(receiver: Receiver<Box<T>>) -> Self {
+        // let (tx_state, rx_state) = flume::unbounded();
         let recv_clone = receiver.clone();
-        spawn_blocking(move || {
+        let join_handle= spawn_blocking(move || {
             while let Ok(task) = recv_clone.recv() {
-                tracing::info!("Processing task {:?}", task);
-                sleep(Duration::from_secs(5));
-                println!("Task {:?} processed", task);
+                task.process();
             }
         });
-        Self { receiver }
+        Self { receiver, join_handle }
+    }
+
+    pub(crate) async fn join(self) -> Result<(), tokio::task::JoinError> {
+        drop(self.receiver);
+        self.join_handle.await?;
+        Ok(())
     }
 }
 
-struct WorkerPool {
-    workers: Vec<Worker>,
+#[derive(Debug)]
+pub struct WorkerPool<T: Task> {
+    workers: Vec<Worker<T>>,
 }
 
-impl WorkerPool {
-    pub(crate) fn new(num_workers: usize, receiver: Receiver<Box<Task>>) -> Self {
+impl<T: Task + 'static> WorkerPool<T> {
+    pub(crate) fn new(num_workers: usize, receiver: Receiver<Box<T>>) -> Self {
         // Create set of proxy receivers
-        let mut workers = Vec::new();
-        for _ in 0..num_workers {
-            let proxy_receiver = receiver.clone();
-            let worker = Worker::new(proxy_receiver);
-            workers.push(worker);
-        }
+        let workers = (0..num_workers).map(|_| {
+            let worker_receiver = receiver.clone();
+            Worker::new(worker_receiver)
+        }).collect::<Vec<_>>();
         Self { workers }
     }
+
+    pub(crate) async fn join(self) -> Result<(), tokio::task::JoinError> {
+        for worker in self.workers {
+            worker.join().await?;
+        }
+        Ok(())
+    }
 }
+
 
 #[cfg(test)]
 mod tests {
-    use crate::queue::{Queue, SubmitTask};
-    use crate::worker::WorkerPool;
-    use crate::queue::Task;
     use std::thread::sleep;
     use std::time::Duration;
-
-    #[tokio::test]
-    async fn test_worker_pool() {
-        let queue = Queue::new();
-        // Connect receiver to queue's sender
-        let receiver = queue.receiver.clone();
-
-        let tasks = (0..10).map(|i| {
-            SubmitTask { description: format!("Task {}", i) }.into()
-        }).collect::<Vec<Task>>();
-
-        sleep(Duration::from_secs(10));
-    }
-}
+    use crate::proc::queue::Queue;
+    use crate::proc::task::{Task, TaskID};
+    
