@@ -36,13 +36,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_queue() {
-        // initialize tracing
-        let subscriber = tracing_subscriber::FmtSubscriber::builder()
-            .with_max_level(tracing::Level::TRACE) // Set the maximum tracing level
-            .finish();
-
-        tracing::subscriber::set_global_default(subscriber)
-            .expect("setting default subscriber failed");
         let queue = Queue::new(2);
 
         let tasks = (0..2).map(|i| {

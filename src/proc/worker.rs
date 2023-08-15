@@ -57,4 +57,24 @@ mod tests {
     use std::time::Duration;
     use crate::proc::queue::Queue;
     use crate::proc::task::{Task, TaskID};
-    
+    use crate::proc::tests::ExampleTask;
+
+    #[tokio::test]
+    async fn test_worker() {
+        // initialize tracing
+        let subscriber = tracing_subscriber::FmtSubscriber::builder()
+            .with_max_level(tracing::Level::TRACE) // Set the maximum tracing level
+            .finish();
+
+        tracing::subscriber::set_global_default(subscriber)
+            .expect("setting default subscriber failed");
+
+        let (tx, rx) = flume::unbounded();
+        let worker = super::Worker::new(rx);
+        let task = Box::new(ExampleTask::from_input("Test".to_string()));
+        tx.send_async(task).await.expect("Failed to send task");
+        sleep(Duration::from_secs(1));
+        drop(tx);
+        worker.join().await.expect("Failed to join worker");
+    }
+}
