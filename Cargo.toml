@@ -1,18 +1,45 @@
 [package]
-name = "object-detection-stream"
+name = "glowrs"
 version = "0.1.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-axum = { version = "0.6.20", features = ["macros"] }
-bytes = "1.4.0"
-console-subscriber = "0.1.10"
-flume = "0.10.14"
+axum = { version = "0.7.4", features = ["macros"] }
+bytes = "1.5.0"
+console-subscriber = "0.2.0"
+flume = "0.11.0"
 futures-util = "0.3.28"
 serde = { version = "1.0.183", features = ["derive"] }
 tokio = { version = "1.31.0", features = ["full", "rt-multi-thread", "tracing"] }
 tracing = "0.1.37"
-tracing-subscriber = "0.3.17"
-uuid = { version = "1.4.1", features = ["v4"] }
+tracing-subscriber = "0.3.18"
+uuid = { version = "1.6.1", features = ["v4"] }
+serde_json = "1.0.111"
+candle-core = { git = "https://github.com/huggingface/candle.git", version = "0.3.3" }
+candle-nn = { git = "https://github.com/huggingface/candle.git", version = "0.3.3" }
+candle-transformers = { git = "https://github.com/huggingface/candle.git", version = "0.3.3" }
+tokenizers = "0.15.0"
+hf-hub = { version = "0.3.2", features = ["tokio"] }
+anyhow = "1.0.79"
+thiserror = "1.0.56"
+tracing-chrome = "0.7.1"
+tower-http = { version = "0.5.1", features = ["trace"] }
+
+# Enable a small amount of optimization in debug mode
+[profile.dev]
+opt-level = 1
+
+# Enable high optimizations for candle in dev builds
+[profile.dev.package.candle-core]
+opt-level = 3
+
+[profile.dev.package.candle-nn]
+opt-level = 3
+
+[profile.dev.package.candle-transformers]
+opt-level = 3
+
+[profile.dev.package.tokenizers]
+opt-level = 3

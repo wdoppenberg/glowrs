@@ -5,15 +5,15 @@
 </div>
 
 
-> A work-in-progress Rust library for ML inference.
+> A work-in-progress Rust web server for embedding
 
 An all-Rust web server for ML inference. Can use either [`burn`](https://github.com/burn-rs/burn) or 
 [`candle`](https://github.com/huggingface/candle) as the backend out of the box. 
 
 ## Features
 
-- [ ] Worker pool
-- [ ] Task queue
+- [ ] Hardware acceleration
+- [ ] OpenAI compatible (`/v1/embeddings`) endpoint
 - [ ] `burn` inference templates
 - [ ] `candle` inference templates
 - [ ] HTTP server using `axum`
