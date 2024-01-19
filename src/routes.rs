@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use axum::{debug_handler, http, Json};
+use axum::{http, Json};
 use axum::response::{IntoResponse, Response};
 use serde::{Deserialize, Serialize};
 use axum::extract::State;
@@ -18,23 +18,7 @@ impl IntoResponse for AppError {
     }
 }
 
-
-fn mock_response(model: &str) -> Result<EmbeddingsResponse, AppError> {
-    Ok(EmbeddingsResponse {
-        object: "list".into(),
-        data: vec![InnerEmbeddingsResponse {
-            object: "embedding".into(),
-            embedding: vec![0.0023064255, -0.009327292, -0.0028842222],
-            index: 0,
-        }],
-        model: model.to_string(),
-        usage: Usage {
-            prompt_tokens: 8,
-            total_tokens: 8,
-        },
-    })
-}
-
+// TODO: Remove unwraps
 pub async fn text_embeddings(State(embedder): State<Arc<Embedder>>, Json(payload): Json<EmbeddingsRequest>) -> Result<impl IntoResponse, AppError> {
     let sentences = match payload.input {
         Sentences::Single(s) => vec![s],

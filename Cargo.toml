@@ -43,3 +43,6 @@ opt-level = 3
 
 [profile.dev.package.tokenizers]
 opt-level = 3
+
+[[bin]]
+name = "server"

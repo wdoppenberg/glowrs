@@ -21,7 +21,16 @@ async fn health_check() -> impl IntoResponse {
 
 #[tokio::main]
 async fn main() -> Result<ExitCode> {
-	// let q = Arc::new(Queue::<EmbedTask>::new(5));
+	tracing_subscriber::registry()
+		.with(
+			tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+				// axum logs rejections from built-in extractors with the `axum::rejection`
+				// target, at `TRACE` level. `axum::rejection=trace` enables showing those events
+				"server=debug,tower_http=debug,axum::rejection=trace".into()
+			}),
+		)
+		.with(tracing_subscriber::fmt::layer())
+		.init();
 
 	let args = EmbedderArgs {
 		cpu: true,
@@ -34,18 +43,8 @@ async fn main() -> Result<ExitCode> {
 	tracing::info!("Loading embedder");
 	let embedder = Embedder::try_new(args)?;
 
-    let state = Arc::new(embedder);
+	let state = Arc::new(embedder);
 
-	tracing_subscriber::registry()
-		.with(
-			tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-				// axum logs rejections from built-in extractors with the `axum::rejection`
-				// target, at `TRACE` level. `axum::rejection=trace` enables showing those events
-				"server=debug,tower_http=debug,axum::rejection=trace".into()
-			}),
-		)
-		.with(tracing_subscriber::fmt::layer())
-		.init();
 	let app = Router::new()
 		.route("/v1/embeddings", post(text_embeddings))
 		.route("/health",get(health_check))
