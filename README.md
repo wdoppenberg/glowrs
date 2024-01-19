@@ -1,36 +1,32 @@
 <div align="center">
 
-# 🚧`GLOWRS`🚧
+# 🚧`glowrs`🚧
 
 </div>
 
 
-> A work-in-progress Rust web server for embedding
+> An experimental Rust web server for embedding sentences
 
 An all-Rust web server for ML inference. Can use either [`burn`](https://github.com/burn-rs/burn) or 
 [`candle`](https://github.com/huggingface/candle) as the backend out of the box. 
 
 ## Features
 
+- [X] OpenAI compatible (`/v1/embeddings`) endpoint
+- [X] `candle` inference with Jina AI embeddings
+- [X] HTTP server using `axum`
 - [ ] Hardware acceleration
-- [ ] OpenAI compatible (`/v1/embeddings`) endpoint
-- [ ] `burn` inference templates
-- [ ] `candle` inference templates
-- [ ] HTTP server using `axum`
-- [ ] gRPC server using `tonic`
 
 ## Usage
 
 ```bash
-cargo add glowrs
-```
-
-```rust
-use glowrs::{Queue, Task};
-
-todo!("Write a README");
+cargo run --bin server --release
 ```
 
 ## Disclaimer
 
-This is still a work-in-progress. The API is not stable and will change.
+This is still a work-in-progress. The embedding performance is not great and does not scale well. This is ofcourse partially
+due to poorly optimized code, but also due to the DL backend. In the future, perhaps upstream
+optimizations to the `candle` library will improve this. 
+
+Do not use this in a production environment. 
