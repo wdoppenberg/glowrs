@@ -7,8 +7,8 @@
 
 > An experimental Rust web server for embedding sentences
 
-An all-Rust web server for ML inference. Can use either [`burn`](https://github.com/burn-rs/burn) or 
-[`candle`](https://github.com/huggingface/candle) as the backend out of the box. 
+An all-Rust web server for sentence embedding inference. Uses
+[`candle`](https://github.com/huggingface/candle) as the runtime.
 
 ## Features
 
