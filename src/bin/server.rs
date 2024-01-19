@@ -4,10 +4,10 @@ use axum::{http, Router};
 use tokio::net::TcpListener;
 use anyhow::Result;
 use axum::extract::MatchedPath;
-use axum::handler::Handler;
 use axum::http::Request;
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
+use thiserror::__private::AsDisplay;
 use tower_http::trace::TraceLayer;
 use tracing::{info_span, Span};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -58,6 +58,7 @@ async fn main() -> Result<ExitCode> {
 					.extensions()
 					.get::<MatchedPath>()
 					.map(MatchedPath::as_str);
+				tracing::debug!("{}", request.uri().as_display());
 
 				info_span!(
                         "http_request",
@@ -74,7 +75,7 @@ async fn main() -> Result<ExitCode> {
 	);
 
 	let listener = TcpListener::bind("127.0.0.1:3000").await?;
-	tracing::debug!("listening on {}", listener.local_addr()?);
+	tracing::info!("listening on {}", listener.local_addr()?);
 	axum::serve(listener, app).await?;
 
 	Ok(ExitCode::SUCCESS)

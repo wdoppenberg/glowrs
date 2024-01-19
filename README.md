@@ -12,9 +12,8 @@ An all-Rust web server for sentence embedding inference. Uses
 
 ## Features
 
-- [X] OpenAI compatible (`/v1/embeddings`) endpoint
+- [X] OpenAI compatible (`/v1/embeddings`) REST API endpoint
 - [X] `candle` inference with Jina AI embeddings
-- [X] HTTP server using `axum`
 - [ ] Hardware acceleration
 
 ## Usage

@@ -75,7 +75,7 @@ mod tests {
         let worker = super::Worker::new(rx);
         let task = Box::new(ExampleTask { input: "Test".into() });
         tx.send_async(task).await.expect("Failed to send task");
-        sleep(Duration::from_secs(1));
+        sleep(Duration::from_millis(500));
         drop(tx);
         worker.join().await.expect("Failed to join worker");
     }

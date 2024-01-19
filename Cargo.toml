@@ -27,6 +27,10 @@ thiserror = "1.0.56"
 tracing-chrome = "0.7.1"
 tower-http = { version = "0.5.1", features = ["trace"] }
 
+[features]
+default = []
+metal = ["candle-core/metal", "candle-nn/metal", "candle-transformers/metal"]
+
 # Enable a small amount of optimization in debug mode
 [profile.dev]
 opt-level = 1

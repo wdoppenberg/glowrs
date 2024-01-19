@@ -21,7 +21,7 @@ mod tests {
 
         fn process(&self) -> Self::Output {
             println!("Processing {}", self.input);
-            sleep(Duration::from_secs(2));
+            sleep(Duration::from_millis(100));
         }
 
         fn get_id(&self) -> TaskID {
