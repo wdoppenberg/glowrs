@@ -8,7 +8,7 @@
 > An experimental Rust web server for embedding sentences
 
 An all-Rust web server for sentence embedding inference. Uses
-[`candle`](https://github.com/huggingface/candle) as the runtime.
+[`candle`](https://github.com/huggingface/candle) as DL framework.
 
 ## Features
 
