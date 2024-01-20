@@ -1,22 +1,15 @@
 #[cfg(test)]
 mod test {
     use anyhow::Result;
-    use glowrs::embedding::{Args, Embedder, SentenceTransformer};
+    use glowrs::embedding::models::JinaBertBaseV2;
+    use glowrs::embedding::sentence_transformer::SentenceTransformer;
     use std::time::Instant;
 
     #[test]
     fn test_embedder() -> Result<()> {
         let start = Instant::now();
 
-        let args = Args {
-            cpu: true,
-            tracing: true,
-            normalize_embeddings: true,
-            tokenizer: None,
-            model: None,
-        };
-
-        let embedder = Embedder::try_new(args)?;
+        let embedder: SentenceTransformer<JinaBertBaseV2> = SentenceTransformer::try_new()?;
 
         let sentences = vec![
             "The cat sits outside",

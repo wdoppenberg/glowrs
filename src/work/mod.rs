@@ -31,7 +31,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_queue() {
-        let queue = Queue::new(2);
+        let queue = Queue::new();
 
         let tasks = (0..2)
             .map(|i| {
