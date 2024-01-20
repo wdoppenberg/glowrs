@@ -4,7 +4,8 @@ use axum::response::{IntoResponse, Response};
 use serde::{Deserialize, Serialize};
 use axum::extract::State;
 use axum::http::StatusCode;
-use crate::embedding::{Embedder, SentenceTransformer};
+use crate::embedding::sbert::SBert;
+use crate::embedding::sentence_transformer::SentenceTransformer;
 
 pub struct TextEmbeddingRouteError(anyhow::Error);
 
@@ -28,8 +29,10 @@ where
 }
 
 // TODO: Remove unwraps
-pub async fn text_embeddings(State(embedder): State<Arc<Embedder>>, Json(payload): Json<EmbeddingsRequest>)
-                             -> Result<impl IntoResponse, TextEmbeddingRouteError> {
+pub async fn text_embeddings<M>(State(embedder): State<Arc<SentenceTransformer<M>>>, Json(payload): Json<EmbeddingsRequest>)
+                             -> Result<impl IntoResponse, TextEmbeddingRouteError>
+where M: SBert
+{
 	let sentences: Vec<String> = payload.input.into();
 
 	let sentences = sentences.iter().map(|s| s.as_str()).collect();

@@ -11,7 +11,8 @@ use thiserror::__private::AsDisplay;
 use tower_http::trace::TraceLayer;
 use tracing::{info_span, Span};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
-use glowrs::embedding::{Args as EmbedderArgs, Embedder};
+use glowrs::embedding::sbert::JinaBertBaseV2;
+use glowrs::embedding::sentence_transformer::{Args, SentenceTransformer};
 
 use glowrs::routes::text_embeddings;
 
@@ -32,16 +33,8 @@ async fn main() -> Result<ExitCode> {
 		.with(tracing_subscriber::fmt::layer())
 		.init();
 
-	let args = EmbedderArgs {
-		cpu: true,
-		tracing: true,
-		normalize_embeddings: true,
-		tokenizer: None,
-		model: None,
-	};
-
 	tracing::info!("Loading embedder");
-	let embedder = Embedder::try_new(args)?;
+	let embedder: SentenceTransformer<JinaBertBaseV2> = SentenceTransformer::try_new()?;
 
 	let state = Arc::new(embedder);
 

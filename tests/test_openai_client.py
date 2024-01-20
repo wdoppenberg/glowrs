@@ -10,7 +10,7 @@ client = OpenAI(
 
 start = time()
 print(client.embeddings.create(
-	input=["This is a sentence that requires an embedding"] * 40,
+	input=["This is a sentence that requires an embedding"] * 50,
 	model="<placeholder>"
 ))
 
