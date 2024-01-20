@@ -45,7 +45,7 @@ async fn main() {
     console_subscriber::init();
 
 
-    let q = Arc::new(Queue::<ExampleTask>::new(5));
+    let q = Arc::new(Queue::<ExampleTask>::new());
 
     // build our application with a route
     let app = Router::new()

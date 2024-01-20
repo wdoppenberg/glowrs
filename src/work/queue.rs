@@ -17,7 +17,7 @@ pub struct Queue<T: Task> {
 
 impl<T: Task> Queue<T> {
 
-    pub fn new(size: usize) -> Self {
+    pub fn new() -> Self {
         let (queue_sender, queue_receiver) = flume::unbounded::<QueueCommand<T>>();
 
         // Launch background thread

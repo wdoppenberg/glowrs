@@ -11,14 +11,16 @@ use thiserror::__private::AsDisplay;
 use tower_http::trace::TraceLayer;
 use tracing::{info_span, Span};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
-use glowrs::embedding::sbert::JinaBertBaseV2;
-use glowrs::embedding::sentence_transformer::{Args, SentenceTransformer};
+use glowrs::embedding::models::{JinaBertBaseV2, SBert};
+use glowrs::embedding::sentence_transformer::SentenceTransformer;
 
 use glowrs::routes::text_embeddings;
 
 async fn health_check() -> impl IntoResponse {
 	(http::StatusCode::OK, "Everything is ok!".to_string())
 }
+
+type EmbedderModel = JinaBertBaseV2;
 
 #[tokio::main]
 async fn main() -> Result<ExitCode> {
@@ -34,9 +36,10 @@ async fn main() -> Result<ExitCode> {
 		.init();
 
 	tracing::info!("Loading embedder");
-	let embedder: SentenceTransformer<JinaBertBaseV2> = SentenceTransformer::try_new()?;
+	let encoder: SentenceTransformer<EmbedderModel> = SentenceTransformer::try_new()?;
+	tracing::info!("Embedder {} loaded", EmbedderModel::MODEL_REPO_NAME);
 
-	let state = Arc::new(embedder);
+	let state = Arc::new(encoder);
 
 	let app = Router::new()
 		.route("/v1/embeddings", post(text_embeddings))

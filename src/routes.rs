@@ -4,8 +4,8 @@ use axum::response::{IntoResponse, Response};
 use serde::{Deserialize, Serialize};
 use axum::extract::State;
 use axum::http::StatusCode;
-use crate::embedding::sbert::SBert;
-use crate::embedding::sentence_transformer::SentenceTransformer;
+use crate::embedding::models::SBert;
+use crate::embedding::sentence_transformer::{SentenceTransformer, Usage};
 
 pub struct TextEmbeddingRouteError(anyhow::Error);
 
@@ -28,15 +28,26 @@ where
     }
 }
 
-// TODO: Remove unwraps
 pub async fn text_embeddings<M>(State(embedder): State<Arc<SentenceTransformer<M>>>, Json(payload): Json<EmbeddingsRequest>)
                              -> Result<impl IntoResponse, TextEmbeddingRouteError>
 where M: SBert
 {
+	    // Extracting the model version from the model repo name
+    let model_version: String = match M::MODEL_REPO_NAME.rsplit('/').next() {
+        Some(version) => version.to_string(),
+        None => {
+            M::MODEL_REPO_NAME.to_string()
+        }
+    };
+
+    if payload.model != model_version {
+	    return Err(TextEmbeddingRouteError::from(anyhow::anyhow!("Model version mismatch")));
+    }
+
 	let sentences: Vec<String> = payload.input.into();
 
 	let sentences = sentences.iter().map(|s| s.as_str()).collect();
-	let embeddings = embedder.encode_batch(sentences, true)?;
+	let (embeddings, usage) = embedder.encode_batch_with_usage(sentences, true)?;
 
 	let data = embeddings.to_vec2::<f32>()?;
 
@@ -49,12 +60,8 @@ where M: SBert
 			embedding: vec,
 			index: i as u32,
 		}).collect(),
-		model: payload.model.to_string(),
-		// TODO: Calculate tokens
-		usage: Usage {
-			prompt_tokens: 0,
-			total_tokens: 0,
-		},
+		model: model_version,
+		usage
 	};
 
 	Ok((StatusCode::OK, Json(response)))
@@ -109,8 +116,3 @@ pub struct InnerEmbeddingsResponse {
 	pub index: u32,
 }
 
-#[derive(Debug, Serialize, PartialEq, Default)]
-pub struct Usage {
-	pub prompt_tokens: u32,
-	pub total_tokens: u32,
-}

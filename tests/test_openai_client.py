@@ -11,7 +11,7 @@ client = OpenAI(
 start = time()
 print(client.embeddings.create(
 	input=["This is a sentence that requires an embedding"] * 50,
-	model="<placeholder>"
+	model="jina-embeddings-v2-base-en"
 ))
 
 print(f"Done in {time() - start}")

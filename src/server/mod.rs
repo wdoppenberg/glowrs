@@ -16,7 +16,7 @@ pub async fn create_task<T: Task>(
     Json(submit): Json<T::Input>,
 ) -> StatusCode {
     tracing::info!("Creating a new task");
-    todo!()
+    unimplemented!()
 }
 
 pub async fn clear_tasks<T: Task>(State(state): State<Arc<Queue<T>>>) -> StatusCode {

@@ -43,3 +43,6 @@ candle-transformers = { opt-level = 3 }
 
 [[bin]]
 name = "server"
+
+[[bin]]
+name = "cli"

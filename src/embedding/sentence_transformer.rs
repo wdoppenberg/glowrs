@@ -1,13 +1,15 @@
 use anyhow::{Error as E, Result};
 use candle_core::backend::BackendDevice;
 use candle_core::{Device, DType, Tensor};
+#[cfg(feature = "metal")]
 use candle_core::metal_backend::MetalDevice;
 use candle_nn::VarBuilder;
 use hf_hub::{Repo, RepoType};
 use hf_hub::api::sync::Api;
 use once_cell::sync::Lazy;
+use serde::Serialize;
 use tokenizers::tokenizer::Tokenizer;
-use crate::embedding::sbert::SBert;
+use crate::embedding::models::SBert;
 
 #[cfg(feature = "metal")]
 static DEVICE: Lazy<Device> = Lazy::new(|| Device::Metal(MetalDevice::new(0).expect("No Metal device found.")));
@@ -15,22 +17,17 @@ static DEVICE: Lazy<Device> = Lazy::new(|| Device::Metal(MetalDevice::new(0).exp
 #[cfg(not(any(feature = "metal")))]
 static DEVICE: Lazy<Device> = Lazy::new(|| Device::Cpu);
 
+#[derive(Debug, Serialize, PartialEq, Default)]
+pub struct Usage {
+	pub prompt_tokens: u32,
+	pub total_tokens: u32,
+}
+
 pub struct SentenceTransformer<M>
 where M: SBert
 {
 	model: M,
 	tokenizer: Tokenizer,
-}
-
-pub struct Args {
-	/// L2 normalization for embeddings.
-	pub normalize_embeddings: bool,
-
-	/// Tokenizer name
-	pub tokenizer: Option<String>,
-
-	/// Jina Embedder model name
-	pub model: Option<String>,
 }
 
 impl<M> SentenceTransformer<M>
@@ -40,14 +37,14 @@ where M: SBert
 
 		let model_path = Api::new()?
 				.repo(Repo::new(
-					M::model_repo_name(),
+					M::MODEL_REPO_NAME.to_string(),
 					RepoType::Model,
 				))
 				.get("model.safetensors")?;
 
 		let tokenizer_path = Api::new()?
 				.repo(Repo::new(
-					M::tokenizer_repo_name(),
+					M::TOKENIZER_REPO_NAME.to_string(),
 					RepoType::Model,
 				))
 				.get("tokenizer.json")?;
@@ -73,10 +70,12 @@ where M: SBert
 			tokenizer,
 		})
 	}
-	pub fn encode_batch(&self, sentences: Vec<&str>, normalize: bool) -> Result<Tensor> {
+	pub fn encode_batch_with_usage(&self, sentences: Vec<&str>, normalize: bool) -> Result<(Tensor, Usage)> {
 		let tokens = self.tokenizer
 			.encode_batch(sentences.to_vec(), true)
 			.map_err(E::msg)?;
+
+		let prompt_tokens = tokens.len() as u32;
 
 		let token_ids = tokens
 			.iter()
@@ -92,14 +91,23 @@ where M: SBert
 		tracing::trace!("generated embeddings {:?}", embeddings.shape());
 
 		// Apply some avg-pooling by taking the mean embedding value for all tokens (including padding)
-		let (_n_sentence, n_tokens, _hidden_size) = embeddings.dims3()?;
-		let embeddings = (embeddings.sum(1)? / (n_tokens as f64))?;
+		let (_n_sentence, out_tokens, _hidden_size) = embeddings.dims3()?;
+		let embeddings = (embeddings.sum(1)? / (out_tokens as f64))?;
 		let embeddings = if normalize {
 			normalize_l2(&embeddings)?
 		} else {
 			embeddings
 		};
-		Ok(embeddings)
+
+		let usage = Usage {
+			prompt_tokens,
+			total_tokens: prompt_tokens + (out_tokens as u32)
+		};
+		Ok((embeddings, usage))
+	}
+
+	pub fn encode_batch(&self, sentences: Vec<&str>, normalize: bool) -> Result<Tensor> {
+		Ok(self.encode_batch_with_usage(sentences, normalize)?.0)
 	}
 }
 
@@ -111,10 +119,10 @@ pub fn normalize_l2(v: &Tensor) -> candle_core::Result<Tensor> {
 mod test {
 	use super::*;
 	use std::time::Instant;
-	use crate::embedding::sbert::JinaBertBaseV2;
+	use crate::embedding::models::JinaBertBaseV2;
 
 	#[test]
-	fn test_embedder() -> Result<()> {
+	fn test_sentence_transformer() -> Result<()> {
 		let start = Instant::now();
 
 		let embedder: SentenceTransformer<JinaBertBaseV2> = SentenceTransformer::try_new()?;
