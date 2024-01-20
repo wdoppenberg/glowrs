@@ -15,11 +15,45 @@ An all-Rust web server for sentence embedding inference. Uses
 - [X] OpenAI compatible (`/v1/embeddings`) REST API endpoint
 - [X] `candle` inference with Jina AI embeddings
 - [ ] Hardware acceleration
+- [ ] Queueing
+- [ ] Multiple model
 
 ## Usage
 
 ```bash
 cargo run --bin server --release
+```
+
+### `curl`
+```shell
+
+```
+
+
+### Python `openai` client
+
+Install the OpenAI Python library:
+```shell
+pip install openai
+```
+
+Use the embeddings method regularly.
+```python
+from openai import OpenAI
+from time import time
+
+client = OpenAI(
+	api_key="sk-something",
+	base_url="http://127.0.0.1:3000/v1"
+)
+
+start = time()
+print(client.embeddings.create(
+	input=["This is a sentence that requires an embedding"] * 40,
+	model="<placeholder>"
+))
+
+print(f"Done in {time() - start}")
 ```
 
 ## Disclaimer

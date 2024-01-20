@@ -4,14 +4,14 @@ from openai import OpenAI
 from time import time
 
 client = OpenAI(
-	api_key="something",
+	api_key="sk-something",
 	base_url="http://127.0.0.1:3000/v1"
 )
 
 start = time()
 print(client.embeddings.create(
-	input=["This is a sentence that is quite a bit longer"] * 40,
-	model="something"
+	input=["This is a sentence that requires an embedding"] * 40,
+	model="<placeholder>"
 ))
 
 print(f"Done in {time() - start}")
