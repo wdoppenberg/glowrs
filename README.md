@@ -13,11 +13,11 @@ it will support other sentence embedders later.
 
 ## Features
 
-- [X] OpenAI compatible (`/v1/embeddings`) REST API endpoint
+- [X] OpenAI API compatible (`/v1/embeddings`) REST API endpoint
 - [X] `candle` inference with Jina AI embeddings
 - [X] Hardware acceleration (Metal for now)
 - [ ] Queueing
-- [ ] Multiple model
+- [ ] Multiple models 
 
 ## Usage
 
