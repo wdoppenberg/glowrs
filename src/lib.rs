@@ -1,4 +1,4 @@
-pub mod work;
-pub mod server;
 pub mod embedding;
 pub mod routes;
+pub mod server;
+pub mod work;

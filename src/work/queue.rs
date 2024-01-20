@@ -16,7 +16,6 @@ pub struct Queue<T: Task> {
 }
 
 impl<T: Task> Queue<T> {
-
     pub fn new() -> Self {
         let (queue_sender, queue_receiver) = flume::unbounded::<QueueCommand<T>>();
 
@@ -25,7 +24,6 @@ impl<T: Task> Queue<T> {
             let mut tasks = Vec::new();
 
             while let Ok(command) = queue_receiver.recv_async().await {
-
                 match command {
                     QueueCommand::Append(task) => {
                         let task = task.clone();
@@ -60,9 +58,7 @@ impl<T: Task> Queue<T> {
                 }
             }
         });
-        Self {
-            queue_sender,
-        }
+        Self { queue_sender }
     }
     pub(crate) fn append(&self, task: Box<T>) -> Result<(), flume::SendError<QueueCommand<T>>> {
         self.queue_sender.send(QueueCommand::Append(task))?;

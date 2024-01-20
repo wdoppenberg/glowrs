@@ -1,14 +1,13 @@
 use axum::routing::post;
 use axum::{http::StatusCode, routing::get, Router};
+use glowrs::server;
+use glowrs::work::queue::Queue;
+use glowrs::work::task::TaskID;
+use glowrs::work::Task;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::thread::sleep;
 use std::time::Duration;
-use glowrs::work::queue::Queue;
-use glowrs::work::Task;
-use glowrs::work::task::TaskID;
-use glowrs::server;
-
 
 async fn health_check() -> StatusCode {
     tracing::info!("Health check request received.");
@@ -44,7 +43,6 @@ async fn main() {
 
     console_subscriber::init();
 
-
     let q = Arc::new(Queue::<ExampleTask>::new());
 
     // build our application with a route
@@ -57,7 +55,6 @@ async fn main() {
         .route("/health", get(health_check))
         .with_state(q);
 
-
     // run our app with hyper
     // `axum::Server` is a re-export of `hyper::Server`
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
@@ -66,8 +63,5 @@ async fn main() {
         .await
         .unwrap();
 
-    axum::serve(listener, app)
-        .await
-        .unwrap();
-
+    axum::serve(listener, app).await.unwrap();
 }

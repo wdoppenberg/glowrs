@@ -73,7 +73,9 @@ mod tests {
 
         let (tx, rx) = flume::unbounded();
         let worker = super::Worker::new(rx);
-        let task = Box::new(ExampleTask { input: "Test".into() });
+        let task = Box::new(ExampleTask {
+            input: "Test".into(),
+        });
         tx.send_async(task).await.expect("Failed to send task");
         sleep(Duration::from_millis(500));
         drop(tx);

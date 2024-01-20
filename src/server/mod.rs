@@ -1,10 +1,10 @@
-use serde::{Deserialize, Serialize};
-use axum::extract::State;
-use std::sync::Arc;
-use axum::http::StatusCode;
-use axum::Json;
 use crate::work::queue::Queue;
 use crate::work::Task;
+use axum::extract::State;
+use axum::http::StatusCode;
+use axum::Json;
+use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 #[derive(Deserialize, Serialize)]
 pub struct SubmitTask {
