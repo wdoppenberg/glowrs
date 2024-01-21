@@ -6,6 +6,7 @@ use axum::response::{IntoResponse, Response};
 use axum::Json;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use tokio::sync::Mutex;
 
 pub struct TextEmbeddingRouteError(anyhow::Error);
 
@@ -29,7 +30,7 @@ where
 }
 
 pub async fn text_embeddings<M>(
-    State(embedder): State<Arc<SentenceTransformer<M>>>,
+    State(embedder_lock): State<Arc<Mutex<SentenceTransformer<M>>>>,
     Json(payload): Json<EmbeddingsRequest>,
 ) -> Result<impl IntoResponse, TextEmbeddingRouteError>
 where
@@ -50,6 +51,7 @@ where
     let sentences: Vec<String> = payload.input.into();
 
     let sentences = sentences.iter().map(|s| s.as_str()).collect();
+    let embedder = embedder_lock.lock().await;
     let (embeddings, usage) = embedder.encode_batch_with_usage(sentences, true)?;
 
     let data = embeddings.to_vec2::<f32>()?;

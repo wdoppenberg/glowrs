@@ -10,6 +10,7 @@ use std::process::ExitCode;
 use std::sync::Arc;
 use thiserror::__private::AsDisplay;
 use tokio::net::TcpListener;
+use tokio::sync::Mutex;
 use tower_http::trace::TraceLayer;
 use tracing::{info_span, Span};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -39,7 +40,7 @@ async fn main() -> Result<ExitCode> {
     let encoder: SentenceTransformer<EmbedderModel> = SentenceTransformer::try_new()?;
     tracing::info!("Embedder {} loaded", EmbedderModel::MODEL_REPO_NAME);
 
-    let state = Arc::new(encoder);
+    let state = Arc::new(Mutex::new(encoder));
 
     let app = Router::new()
         .route("/v1/embeddings", post(text_embeddings))
