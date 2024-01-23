@@ -1,4 +1,3 @@
-use std::any::Any;
 use candle_core::{DType, Module, Tensor};
 use candle_nn::VarBuilder;
 use candle_transformers::models::{
