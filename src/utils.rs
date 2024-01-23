@@ -17,6 +17,18 @@ pub mod device {
 
 	#[cfg(not(any(feature = "metal", feature = "cuda")))]
 	pub static DEVICE: Lazy<Device> = Lazy::new(|| Device::Cpu);
+
+	pub fn print_device_info() {
+		if DEVICE.is_cpu() {
+			tracing::info!("Using CPU")
+		}
+		if DEVICE.is_cuda() {
+			tracing::info!("Using CUDA")
+		}
+		if DEVICE.is_metal() {
+			tracing::info!("Using Metal")
+		}
+	}
 }
 
 pub fn normalize_l2(v: &Tensor) -> candle_core::Result<Tensor> {
