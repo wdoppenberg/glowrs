@@ -1,5 +1,5 @@
-use crate::embedding::models::SBert;
-use crate::embedding::sentence_transformer::{SentenceTransformer, Usage};
+use crate::embedding::embedder::Embedder;
+use crate::embedding::sentence_transformer::SentenceTransformer;
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
@@ -30,28 +30,26 @@ where
 }
 
 pub async fn text_embeddings<M>(
-    State(embedder_lock): State<Arc<Mutex<SentenceTransformer<M>>>>,
+    State(embedder_mutex): State<Arc<Mutex<SentenceTransformer<M>>>>,
     Json(payload): Json<EmbeddingsRequest>,
 ) -> Result<impl IntoResponse, TextEmbeddingRouteError>
 where
-    M: SBert,
+    M: Embedder,
 {
-    // Extracting the model version from the model repo name
-    let model_version: String = match M::MODEL_REPO_NAME.rsplit('/').next() {
-        Some(version) => version.to_string(),
-        None => M::MODEL_REPO_NAME.to_string(),
-    };
+    // // Extracting the model version from the model repo name
+    // let model_version: String = match String::From(M).rsplit('/').next() {
+    //     Some(version) => version.to_string(),
+    //     None => M::MODEL_REPO_NAME.to_string(),
+    // };
+    //
+    // if payload.model != model_version {
+    //     return Err(TextEmbeddingRouteError::from(anyhow::anyhow!(
+    //         "Model version mismatch"
+    //     )));
+    // }
+    let sentences: Sentences = payload.input;
 
-    if payload.model != model_version {
-        return Err(TextEmbeddingRouteError::from(anyhow::anyhow!(
-            "Model version mismatch"
-        )));
-    }
-
-    let sentences: Vec<String> = payload.input.into();
-
-    let sentences = sentences.iter().map(|s| s.as_str()).collect();
-    let embedder = embedder_lock.lock().await;
+    let embedder = embedder_mutex.lock().await;
     let (embeddings, usage) = embedder.encode_batch_with_usage(sentences, true)?;
 
     let data = embeddings.to_vec2::<f32>()?;
@@ -67,7 +65,7 @@ where
                 index: i as u32,
             })
             .collect(),
-        model: model_version,
+        model: payload.model,
         usage,
     };
 
@@ -79,6 +77,26 @@ where
 pub enum Sentences {
     Single(String),
     Multiple(Vec<String>),
+}
+
+impl From<String> for Sentences {
+    fn from(s: String) -> Self {
+        Self::Single(s)
+    }
+}
+
+
+
+impl From<Vec<&str>> for Sentences {
+    fn from(strings: Vec<&str>) -> Self {
+        Self::Multiple(strings.into_iter().map(|s| s.to_string()).collect())
+    }
+}
+
+impl From<Vec<String>> for Sentences {
+    fn from(strings: Vec<String>) -> Self {
+        Self::Multiple(strings)
+    }
 }
 
 impl From<Sentences> for Vec<String> {
@@ -95,6 +113,12 @@ pub struct EmbeddingsRequest {
     pub input: Sentences,
     pub model: String,
     pub encoding_format: String,
+}
+
+#[derive(Debug, Serialize, PartialEq, Default)]
+pub struct Usage {
+	pub prompt_tokens: u32,
+	pub total_tokens: u32,
 }
 
 #[derive(Debug, Serialize)]

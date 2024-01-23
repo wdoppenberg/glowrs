@@ -4,8 +4,7 @@ use axum::http::Request;
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use axum::{http, Router};
-use glowrs::embedding::models::{JinaBertBaseV2, SBert};
-use glowrs::embedding::sentence_transformer::SentenceTransformer;
+use glowrs::embedding::sentence_transformer::SentenceTransformerBuilder;
 use std::process::ExitCode;
 use std::sync::Arc;
 use thiserror::__private::AsDisplay;
@@ -21,8 +20,6 @@ async fn health_check() -> impl IntoResponse {
     (http::StatusCode::OK, "Everything is ok!".to_string())
 }
 
-type EmbedderModel = JinaBertBaseV2;
-
 #[tokio::main]
 async fn main() -> Result<ExitCode> {
     tracing_subscriber::registry()
@@ -37,10 +34,15 @@ async fn main() -> Result<ExitCode> {
         .init();
 
     tracing::info!("Loading embedder");
-    let encoder: SentenceTransformer<EmbedderModel> = SentenceTransformer::try_new()?;
-    tracing::info!("Embedder {} loaded", EmbedderModel::MODEL_REPO_NAME);
+	let model_repo = "sentence-transformers/all-MiniLM-L6-v2";
+    let builder = SentenceTransformerBuilder::new();
+	let sentence_transformer = builder
+		.with_model_repo(model_repo)?
+		.with_tokenizer_repo(model_repo)?
+		.build()?;
+    tracing::info!("Embedder {} loaded", model_repo);
 
-    let state = Arc::new(Mutex::new(encoder));
+    let state = Arc::new(Mutex::new(sentence_transformer));
 
     let app = Router::new()
         .route("/v1/embeddings", post(text_embeddings))

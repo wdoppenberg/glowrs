@@ -2,7 +2,6 @@ use crate::work::queue::Queue;
 use crate::work::Task;
 use axum::extract::State;
 use axum::http::StatusCode;
-use axum::Json;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
@@ -12,8 +11,8 @@ pub struct SubmitTask {
 }
 
 pub async fn create_task<T: Task>(
-    State(queue): State<Arc<Queue<T>>>,
-    Json(submit): Json<T::Input>,
+    // State(queue): State<Arc<Queue<T>>>,
+    // Json(submit): Json<T::Input>,
 ) -> StatusCode {
     tracing::info!("Creating a new task");
     unimplemented!()
