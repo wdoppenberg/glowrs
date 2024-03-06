@@ -1,12 +1,9 @@
-use crate::embedding::embedder::Embedder;
-use crate::embedding::sentence_transformer::SentenceTransformer;
-use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use axum::Json;
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
-use tokio::sync::Mutex;
+
+pub mod default;
+pub mod text_embeddings;
 
 pub struct TextEmbeddingRouteError(anyhow::Error);
 
@@ -29,49 +26,6 @@ where
     }
 }
 
-pub async fn text_embeddings<M>(
-    State(embedder_mutex): State<Arc<Mutex<SentenceTransformer<M>>>>,
-    Json(payload): Json<EmbeddingsRequest>,
-) -> Result<impl IntoResponse, TextEmbeddingRouteError>
-where
-    M: Embedder,
-{
-    // // Extracting the model version from the model repo name
-    // let model_version: String = match String::From(M).rsplit('/').next() {
-    //     Some(version) => version.to_string(),
-    //     None => M::MODEL_REPO_NAME.to_string(),
-    // };
-    //
-    // if payload.model != model_version {
-    //     return Err(TextEmbeddingRouteError::from(anyhow::anyhow!(
-    //         "Model version mismatch"
-    //     )));
-    // }
-    let sentences: Sentences = payload.input;
-
-    let embedder = embedder_mutex.lock().await;
-    let (embeddings, usage) = embedder.encode_batch_with_usage(sentences, true)?;
-
-    let data = embeddings.to_vec2::<f32>()?;
-
-    let response = EmbeddingsResponse {
-        object: "list".into(),
-        data: data
-            .into_iter()
-            .enumerate()
-            .map(|(i, vec)| InnerEmbeddingsResponse {
-                object: "embedding".into(),
-                embedding: vec,
-                index: i as u32,
-            })
-            .collect(),
-        model: payload.model,
-        usage,
-    };
-
-    Ok((StatusCode::OK, Json(response)))
-}
-
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum Sentences {
@@ -84,8 +38,6 @@ impl From<String> for Sentences {
         Self::Single(s)
     }
 }
-
-
 
 impl From<Vec<&str>> for Sentences {
     fn from(strings: Vec<&str>) -> Self {
@@ -109,16 +61,23 @@ impl From<Sentences> for Vec<String> {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum EncodingFormat {
+    Float,
+    Base64,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct EmbeddingsRequest {
     pub input: Sentences,
     pub model: String,
-    pub encoding_format: String,
+    pub encoding_format: EncodingFormat,
 }
 
 #[derive(Debug, Serialize, PartialEq, Default)]
 pub struct Usage {
-	pub prompt_tokens: u32,
-	pub total_tokens: u32,
+    pub prompt_tokens: u32,
+    pub total_tokens: u32,
 }
 
 #[derive(Debug, Serialize)]

@@ -1,164 +1,160 @@
+use anyhow::{Context, Error, Result};
 use candle_core::{DType, Module, Tensor};
 use candle_nn::VarBuilder;
 use candle_transformers::models::{
-	bert::{BertModel, Config as BertConfig},
-	jina_bert::{BertModel as _JinaBertModel, Config as JinaBertConfig},
+    bert::Config as BertConfig, jina_bert::Config as JinaBertConfig,
 };
-use anyhow::{anyhow, Error, Result};
-use hf_hub::api::sync::Api;
-use hf_hub::{Repo, RepoType};
+use hf_hub::api::sync::ApiRepo;
+use serde::de::DeserializeOwned;
 use tokenizers::Tokenizer;
-use crate::routes::{Sentences, Usage};
+
 use crate::utils::device::DEVICE;
 use crate::utils::normalize_l2;
 
-/// This trait represents a semantic embedding model based on the Sentence-Bert architecture.
-pub trait Embedder: Send {
-	fn forward(&self, xs: &Tensor) -> Result<Tensor>;
-	fn encode_batch_with_usage(
-		&self,
-		sentences: Sentences,
-		normalize: bool,
-		tokenizer: &Tokenizer,
-	) -> Result<(Tensor, Usage)> {
-		let s_vec: Vec<String> = sentences.into();
-		let tokens = tokenizer
-			.encode_batch(s_vec, true)
-			.map_err(Error::msg)?;
+// Re-exports
+pub use candle_transformers::models::{bert::BertModel, jina_bert::BertModel as JinaBertModel};
+use crate::server::routes::{Sentences, Usage};
 
-		let prompt_tokens = tokens.len() as u32;
-
-		let token_ids = tokens
-			.iter()
-			.map(|tokens| {
-				let tokens = tokens.get_ids().to_vec();
-				Tensor::new(tokens.as_slice(), &DEVICE)
-			})
-			.collect::<candle_core::Result<Vec<_>>>()?;
-
-		let token_ids = Tensor::stack(&token_ids, 0)?;
-
-		tracing::trace!("running inference on batch {:?}", token_ids.shape());
-		let embeddings = self.forward(&token_ids)?;
-		tracing::trace!("generated embeddings {:?}", embeddings.shape());
-
-		// Apply some avg-pooling by taking the mean embedding value for all tokens (including padding)
-		let (_n_sentence, out_tokens, _hidden_size) = embeddings.dims3()?;
-		let embeddings = (embeddings.sum(1)? / (out_tokens as f64))?;
-		let embeddings = if normalize {
-			normalize_l2(&embeddings)?
-		} else {
-			embeddings
-		};
-
-		let usage = Usage {
-			prompt_tokens,
-			total_tokens: prompt_tokens + (out_tokens as u32),
-		};
-		Ok((embeddings, usage))
-	}
-
-	fn encode_batch(
-		&self,
-		sentences: Sentences,
-		normalize: bool,
-		tokenizer: &Tokenizer
-	) -> Result<Tensor> {
-		let (out, _) = self.encode_batch_with_usage(sentences, normalize, tokenizer)?;
-		Ok(out)
-	}
-
+pub trait EmbedderModel: Sized {
+    type Config: DeserializeOwned;
+    fn load_model(vb: VarBuilder, cfg: &Self::Config) -> Result<Self>;
+    fn inner_forward(&self, token_ids: &Tensor) -> Result<Tensor>;
 }
 
-pub trait StaticLoadEmbedder: Sized + Embedder {
-	fn new() -> Result<Self>;
+impl EmbedderModel for BertModel {
+    type Config = BertConfig;
+
+    fn load_model(vb: VarBuilder, cfg: &Self::Config) -> Result<Self> {
+        Ok(Self::load(vb, cfg)?)
+    }
+
+    #[inline]
+    fn inner_forward(&self, token_ids: &Tensor) -> Result<Tensor> {
+        let token_type_ids = token_ids.zeros_like()?;
+        Ok(self.forward(token_ids, &token_type_ids)?)
+    }
 }
 
-pub trait DynLoadEmbedder: Embedder {
-	fn try_new(
-		model_repo_name: &str,
-	) -> Result<DynEmbedder>;
+impl EmbedderModel for JinaBertModel {
+    type Config = JinaBertConfig;
+    fn load_model(vb: VarBuilder, cfg: &Self::Config) -> Result<Self> {
+        Ok(Self::new(vb, cfg)?)
+    }
+
+    #[inline]
+    fn inner_forward(&self, token_ids: &Tensor) -> Result<Tensor> {
+        Ok(self.forward(token_ids)?)
+    }
 }
 
-pub struct DynEmbedder(Box<dyn Embedder>);
+pub(crate) fn load_model_and_tokenizer<E>(api: ApiRepo) -> Result<(E, Tokenizer)>
+where
+    E: EmbedderModel, // Model
+{
+    let model_path = api
+        .get("model.safetensors")
+        .context("Model repository is not available or doesn't contain `model.safetensors`.")?;
 
-impl DynLoadEmbedder for DynEmbedder {
-	fn try_new(
-		model_repo_name: &str,
-	) -> Result<DynEmbedder>
-	{
-		match model_repo_name {
-			"jinaai/jina-embeddings-v2-base-en" => {
-				Ok(Self(Box::new(JinaBertBaseV2::new()?)))
-			},
-			"sentence-transformers/all-MiniLM-L6-v2" => {
-				Ok(Self(Box::new(AllMiniLmL6V2::new()?)))
-			}
-			_ => {Err(anyhow!("No matching model found."))}
-		}
-	}
+    let config_path = api
+        .get("config.json")
+        .context("Model repository doesn't contain `config.json`.")?;
+
+    let tokenizer_path = api
+        .get("tokenizer.json")
+        .context("Model repository doesn't contain `tokenizer.json`.")?;
+
+    let config_str = std::fs::read_to_string(config_path)?;
+    let cfg: E::Config = serde_json::from_str(&config_str)
+		.context(
+			"Failed to deserialize config.json. Make sure you have the right EmbedderModel implementation."
+		)?;
+    let tokenizer = Tokenizer::from_file(tokenizer_path).map_err(Error::msg)?;
+
+    let vb = unsafe { VarBuilder::from_mmaped_safetensors(&[model_path], DType::F32, &DEVICE)? };
+
+    let model = E::load_model(vb, &cfg).context("Something went wrong while loading the model.")?;
+
+    Ok((model, tokenizer))
 }
 
-impl Embedder for DynEmbedder {
-	fn forward(&self, xs: &Tensor) -> Result<Tensor> {
-		self.0.as_ref().forward(xs)
-	}
+pub(crate) fn encode_batch_with_usage<E: EmbedderModel>(
+    model: &E,
+    tokenizer: &Tokenizer,
+    sentences: impl Into<Vec<String>>,
+    normalize: bool,
+) -> Result<(Tensor, Usage)> {
+    let tokens = tokenizer
+        .encode_batch(sentences.into(), true)
+        .map_err(Error::msg)?;
+
+    let prompt_tokens = tokens.len() as u32;
+
+    let token_ids = tokens
+        .iter()
+        .map(|tokens| {
+            let tokens = tokens.get_ids().to_vec();
+            Tensor::new(tokens.as_slice(), &DEVICE)
+        })
+        .collect::<candle_core::Result<Vec<_>>>()?;
+
+    let token_ids = Tensor::stack(&token_ids, 0)?;
+
+    tracing::trace!("running inference on batch {:?}", token_ids.shape());
+    let embeddings = model.inner_forward(&token_ids)?;
+    tracing::trace!("generated embeddings {:?}", embeddings.shape());
+
+    // Apply some avg-pooling by taking the mean embedding value for all tokens (including padding)
+    let (_n_sentence, out_tokens, _hidden_size) = embeddings.dims3()?;
+    let embeddings = (embeddings.sum(1)? / (out_tokens as f64))?;
+    let embeddings = if normalize {
+        normalize_l2(&embeddings)?
+    } else {
+        embeddings
+    };
+
+    // TODO: Incorrect usage calculation - fix
+    let usage = Usage {
+        prompt_tokens,
+        total_tokens: prompt_tokens + (out_tokens as u32),
+    };
+    Ok((embeddings, usage))
 }
 
-pub struct JinaBertBaseV2(_JinaBertModel);
-
-impl StaticLoadEmbedder for JinaBertBaseV2 {
-	fn new() -> Result<Self> {
-		let model_path = Api::new()?
-			.repo(Repo::new("jinaai/jina-embeddings-v2-base-en".into(), RepoType::Model))
-			.get("model.safetensors")?;
-
-		let vb =
-			unsafe { VarBuilder::from_mmaped_safetensors(&[model_path], DType::F32, &DEVICE)? };
-
-		let cfg = JinaBertConfig::v2_base();
-		let model = _JinaBertModel::new(vb, &cfg)?;
-
-		Ok(Self(model))
-	}
+pub(crate) fn encode_batch<E: EmbedderModel>(
+    model: &E,
+    tokenizer: &Tokenizer,
+    sentences: Sentences,
+    normalize: bool,
+) -> Result<Tensor> {
+    let (out, _) = encode_batch_with_usage(model, tokenizer, sentences, normalize)?;
+    Ok(out)
 }
 
-impl Embedder for JinaBertBaseV2 {
-	fn forward(&self, xs: &Tensor) -> Result<Tensor> {
-		Ok(self.0.forward(xs)?)
-	}
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use hf_hub::api::sync::Api;
+    use hf_hub::{Repo, RepoType};
 
-pub struct AllMiniLmL6V2(BertModel);
+    // TODO: Move to integration tests
+    #[test]
+    fn test_load_sentence_transformers() {
+        let repo_name = "sentence-transformers/all-MiniLM-L6-v2";
+        let revision = "refs/pr/21";
+        let api = Api::new().unwrap().repo(Repo::with_revision(
+            repo_name.into(),
+            RepoType::Model,
+            revision.into(),
+        ));
+        let (_model, _tokenizer) = load_model_and_tokenizer::<BertModel>(api).unwrap();
+    }
 
-impl Embedder for AllMiniLmL6V2 {
-	fn forward(&self, xs: &Tensor) -> Result<Tensor> {
-		let token_type_ids = xs.zeros_like()?;
-		Ok(self.0.forward(xs, &token_type_ids)?)
-	}
-}
-
-
-impl StaticLoadEmbedder for AllMiniLmL6V2 {
-	fn new() -> Result<Self> {
-		let default_revision = "refs/pr/21".to_string();
-		let api = Api::new()?
-			.repo(Repo::with_revision("sentence-transformers/all-MiniLM-L6-v2".into(), RepoType::Model, default_revision));
-
-		let model_path = api
-			.get("model.safetensors")?;
-
-		let config_path = api
-			.get("config.json")?;
-
-		let config_str = std::fs::read_to_string(config_path)?;
-		let cfg: BertConfig = serde_json::from_str(&config_str)?;
-
-		let vb =
-			unsafe { VarBuilder::from_mmaped_safetensors(&[model_path], DType::F32, &DEVICE)? };
-
-		let model = BertModel::load(vb, &cfg)?;
-
-		Ok(Self(model))
-	}
+    #[test]
+    fn test_load_jina() {
+        let repo_name = "jinaai/jina-embeddings-v2-base-en";
+        let api = Api::new()
+            .unwrap()
+            .repo(Repo::new(repo_name.into(), RepoType::Model));
+        let (_model, _tokenizer) = load_model_and_tokenizer::<JinaBertModel>(api).unwrap();
+    }
 }

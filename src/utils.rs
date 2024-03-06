@@ -5,7 +5,7 @@ pub mod device {
 	use once_cell::sync::Lazy;
 
 	#[cfg(all(feature = "metal", feature = "cuda"))]
-	compile_error!("feature \"foo\" and feature \"bar\" cannot be enabled at the same time");
+	compile_error!("feature \"metal\" and feature \"cuda\" cannot be enabled at the same time");
 
 	#[cfg(feature = "metal")]
 	pub static DEVICE: Lazy<Device> =

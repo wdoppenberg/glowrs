@@ -1,127 +1,87 @@
-use crate::embedding::embedder::{DynEmbedder, DynLoadEmbedder, Embedder};
-use anyhow::{anyhow, Error, Result};
+use crate::embedding::embedder::{EmbedderModel, encode_batch, encode_batch_with_usage, load_model_and_tokenizer};
+use anyhow::Result;
 use candle_core::{Tensor};
-use hf_hub::api::sync::Api;
+use hf_hub::api::sync::{Api, ApiRepo};
 use hf_hub::{Repo, RepoType};
 use tokenizers::tokenizer::Tokenizer;
-use crate::routes::{Sentences, Usage};
+use crate::server::routes::{Sentences, Usage};
 
 
 pub struct SentenceTransformer<E>
-where E: Embedder
+where E: EmbedderModel
 {
-	embedder: E,
+	model: E,
 	tokenizer: Tokenizer,
 }
 
 impl<E> SentenceTransformer<E>
 	where
-		E: Embedder,
+		E: EmbedderModel,
 {
-	pub fn new(embedder: E, tokenizer: Tokenizer) -> Self {
+	pub fn new(model: E, tokenizer: Tokenizer) -> Self {
 		Self {
-			embedder,
+			model,
 			tokenizer
 		}
 	}
 
-	// TODO: Fix token usage - currently incorrectly calculated
+	pub fn from_repo(repo_name: impl Into<String>, revision: impl Into<String>) -> Result<Self> {
+		let api = Api::new()?
+			.repo(Repo::with_revision(repo_name.into(), RepoType::Model, revision.into()));
+
+		Self::try_from(api)
+	}
+
 	pub fn encode_batch_with_usage(
 		&self,
 		sentences: Sentences,
 		normalize: bool,
 	) -> Result<(Tensor, Usage)> {
-		let (embeddings, usage) = self.embedder.encode_batch_with_usage(
+		let (embeddings, usage) = encode_batch_with_usage(
+			&self.model,
+			&self.tokenizer,
 			sentences,
-			normalize,
-			&self.tokenizer
+			normalize
 		)?;
 		Ok((embeddings, usage))
 	}
 
 	pub fn encode_batch(&self, sentences: Sentences, normalize: bool) -> Result<Tensor> {
-		Ok(self.encode_batch_with_usage(sentences, normalize)?.0)
+		encode_batch(
+			&self.model,
+			&self.tokenizer,
+			sentences,
+			normalize
+		)
 	}
 }
 
-#[derive(Default)]
-pub struct SentenceTransformerBuilder
+impl<E> TryFrom<ApiRepo> for SentenceTransformer<E>
+	where
+		E: EmbedderModel,
 {
-	embedder: Option<DynEmbedder>,
-	tokenizer: Option<Tokenizer>,
-}
-
-impl SentenceTransformerBuilder
-{
-	pub fn new() -> Self {
-		Default::default()
-	}
-	pub fn with_tokenizer_repo(self, repo_name: &str) -> Result<Self> {
-		let tokenizer_path = Api::new()?
-			.repo(Repo::new(
-				repo_name.to_string(),
-				RepoType::Model,
-			))
-			.get("tokenizer.json")?;
-
-		let mut tokenizer = Tokenizer::from_file(tokenizer_path).map_err(Error::msg)?;
-
-		if let Some(pp) = tokenizer.get_padding_mut() {
-			pp.strategy = tokenizers::PaddingStrategy::BatchLongest
-		} else {
-			let pp = tokenizers::PaddingParams {
-				strategy: tokenizers::PaddingStrategy::BatchLongest,
-				..Default::default()
-			};
-			tokenizer.with_padding(Some(pp));
-		}
-		Ok(Self {
-			embedder: self.embedder,
-			tokenizer: Some(tokenizer)
-		})
-	}
-
-	pub fn with_model_repo(self, repo_name: &str) -> Result<Self> {
-		let embedder = DynEmbedder::try_new(repo_name)?;
-
-		Ok(Self{
-			embedder: Some(embedder),
-			tokenizer: self.tokenizer
-		})
-	}
-
-	pub fn build(self) -> Result<SentenceTransformer<DynEmbedder>> {
-		match (self.embedder, self.tokenizer) {
-			(Some(embedder), Some(tokenizer)) => {
-					Ok(SentenceTransformer {
-					embedder,
-					tokenizer
-				})
-			}
-			(None, Some(_)) => Err(anyhow!("No embedder repository provided!")),
-			(Some(_), None) => Err(anyhow!("No tokenizer repository provided!")),
-			_ => Err(anyhow!("Neither embedder or tokenizer repository provided!"))
-		}
-
+	type Error = anyhow::Error;
+	fn try_from(api: ApiRepo) -> Result<Self> {
+		let (model, tokenizer) = load_model_and_tokenizer(api)?;
+		Ok(Self::new(model, tokenizer))
 	}
 }
-
 
 #[cfg(test)]
 mod test {
 	use super::*;
 	use std::time::Instant;
+	use candle_transformers::models::bert::BertModel;
 
 	#[test]
 	fn test_sentence_transformer() -> Result<()> {
 		let start = Instant::now();
 
-		let builder = SentenceTransformerBuilder::new();
-		let sentence_transformer = builder
-			.with_model_repo("jinaai/jina-embeddings-v2-base-en")?
-			.with_tokenizer_repo("sentence-transformers/all-MiniLM-L6-v2")?
-			.build()?;
-
+		let model_repo = "sentence-transformers/all-MiniLM-L6-v2";
+		let default_revision = "refs/pr/21".to_string();
+		let sentence_transformer: SentenceTransformer<BertModel> = SentenceTransformer::from_repo(
+			model_repo, default_revision
+		)?;
 
 		let sentences =  Sentences::from(vec![
 			"The cat sits outside",

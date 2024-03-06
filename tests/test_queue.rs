@@ -1,9 +1,9 @@
 use axum::routing::post;
 use axum::{http::StatusCode, routing::get, Router};
 use glowrs::server;
-use glowrs::work::queue::Queue;
-use glowrs::work::task::TaskID;
-use glowrs::work::Task;
+use glowrs::infer::queue::Queue;
+use glowrs::infer::task::TaskID;
+use glowrs::infer::Task;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::thread::sleep;
