@@ -1,11 +1,9 @@
 use anyhow::Result;
-use std::collections::VecDeque;
-use std::sync::{Arc, Mutex};
-use candle_transformers::models::bert::BertModel;
 use thiserror::Error;
 use tokio::sync::{mpsc, oneshot};
-use tokio::task::spawn_blocking;
 use tokio::time::Instant;
+use uuid::Uuid;
+use crate::embedding::embedder::JinaBertModel;
 use crate::embedding::sentence_transformer::SentenceTransformer;
 
 use crate::server::routes::{EmbeddingsRequest, EmbeddingsResponse, InnerEmbeddingsResponse};
@@ -20,6 +18,9 @@ pub enum InferError {
 /// Queue entry
 #[derive(Debug)]
 pub(crate) struct Entry {
+	/// Identifier
+	pub id: Uuid,
+
     /// Request
     pub embeddings_request: EmbeddingsRequest,
 
@@ -33,6 +34,7 @@ pub(crate) struct Entry {
 impl Entry {
     pub fn new(embeddings_request: EmbeddingsRequest, response_tx: oneshot::Sender<Result<EmbeddingsResponse>>) -> Self {
         Self {
+	        id: Uuid::new_v4(),
             embeddings_request,
             response_tx,
             queue_time: Instant::now()
@@ -40,53 +42,31 @@ impl Entry {
     }
 }
 
-/// Queue State
-#[derive(Debug)]
-struct State {
-    /// Queue entries organized in a Vec
-    entries: VecDeque<(u64, Entry)>,
-
-    /// Id of the next entry
-    next_id: u64,
-
-    /// Id of the next batch
-    next_batch_id: u64,
-}
-
-impl State {
-    fn new(capacity: usize) -> Self {
-        Self {
-            entries: VecDeque::with_capacity(capacity),
-            next_id: 0,
-            next_batch_id: 0,
-        }
-    }
-
-    /// Append an entry to the queue
-    fn append(&mut self, entry: Entry) {
-        // Push entry in the queue
-        self.entries.push_back((self.next_id, entry));
-        self.next_id += 1;
-    }
-}
 
 // TODO: Configurable by feature flag?
-type Embedder = BertModel;
+type Embedder = JinaBertModel;
 
+struct InferenceArgs {
+	model_repo: &'static str,
+	revision: &'static str
+}
 
 // Background task responsible for the queue state
-async fn queue_task(_state: Arc<Mutex<State>>, mut receiver: mpsc::UnboundedReceiver<QueueCommand>) {
-    // TODO: Make configurable
-    let model_repo = "sentence-transformers/all-MiniLM-L6-v2";
-    let revision = "refs/pr/21".to_string();
-    let sentence_transformer: SentenceTransformer<Embedder> = SentenceTransformer::from_repo(model_repo, revision).expect("Failed to load model.");
-    tracing::info!("Model {} loaded", model_repo);
+async fn queue_task(
+	args: InferenceArgs,
+	mut receiver: mpsc::UnboundedReceiver<QueueCommand>
+) {
+	tracing::info!("Loading model: {}. Wait for model load.", args.model_repo);
+    let sentence_transformer: SentenceTransformer<Embedder> = SentenceTransformer::from_repo(
+	    args.model_repo, args.revision
+    ).expect("Failed to load model.");
+    tracing::info!("Model loaded");
 
     while let Some(cmd) = receiver.recv().await {
         match cmd {
             // TODO: Replace with separate (blocking) inference task
             Append(entry) => {
-                // state.lock().unwrap().append(*entry);
+	            tracing::trace!("Processing entry {}, added {:?}", entry.id, entry.queue_time);
                 let sentences = entry.embeddings_request.input;
 
             	let normalize = true;
@@ -115,13 +95,6 @@ async fn queue_task(_state: Arc<Mutex<State>>, mut receiver: mpsc::UnboundedRece
     }
 }
 
-
-impl Default for State {
-    fn default() -> Self {
-        Self::new(128)
-    }
-}
-
 #[derive(Debug)]
 enum QueueCommand {
     Append(Box<Entry>),
@@ -136,14 +109,18 @@ pub(crate) struct Queue {
 
 impl Queue {
     pub(crate) fn new() -> Self {
-        // Create state
-        let state = Arc::new(Mutex::new(State::default()));
         // Create channel
         let (queue_sender, queue_receiver) = mpsc::unbounded_channel();
 
+	    // Inference args
+	    let args = InferenceArgs {
+		    model_repo: "jinaai/jina-embeddings-v2-base-en",
+		    revision: "main"
+	    };
+
         // Launch blocking background queue task
-        // TODO: Not blocking atm, fix
-        tokio::spawn(queue_task(state, queue_receiver));
+        // TODO: Not blocking atm, investigate whether necessary
+        tokio::spawn(queue_task(args, queue_receiver));
 
         Self { queue_sender }
     }

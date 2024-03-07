@@ -4,7 +4,7 @@ use axum::Json;
 use tokio::time::Instant;
 use axum::http::StatusCode;
 use crate::server::routes::{EmbeddingsRequest, EmbeddingsResponse, TextEmbeddingRouteError};
-use crate::server::ServerState;
+use crate::server::state::ServerState;
 
 
 pub async fn text_embeddings(
