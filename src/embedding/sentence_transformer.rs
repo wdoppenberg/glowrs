@@ -1,159 +1,115 @@
-use crate::embedding::models::SBert;
-use anyhow::{Error as E, Result};
-use candle_core::backend::BackendDevice;
-#[cfg(feature = "metal")]
-use candle_core::metal_backend::MetalDevice;
-use candle_core::{DType, Device, Tensor};
-use candle_nn::VarBuilder;
-use hf_hub::api::sync::Api;
+use crate::embedding::embedder::{EmbedderModel, encode_batch, encode_batch_with_usage, load_model_and_tokenizer};
+use anyhow::Result;
+use candle_core::{Tensor};
+use hf_hub::api::sync::{Api, ApiRepo};
 use hf_hub::{Repo, RepoType};
-use once_cell::sync::Lazy;
-use serde::Serialize;
 use tokenizers::tokenizer::Tokenizer;
+use crate::server::routes::{Sentences, Usage};
 
-#[cfg(feature = "metal")]
-static DEVICE: Lazy<Device> =
-    Lazy::new(|| Device::Metal(MetalDevice::new(0).expect("No Metal device found.")));
 
-#[cfg(not(any(feature = "metal")))]
-static DEVICE: Lazy<Device> = Lazy::new(|| Device::Cpu);
-
-#[derive(Debug, Serialize, PartialEq, Default)]
-pub struct Usage {
-    pub prompt_tokens: u32,
-    pub total_tokens: u32,
-}
-
-pub struct SentenceTransformer<M>
-where
-    M: SBert,
+pub struct SentenceTransformer<E>
+where E: EmbedderModel
 {
-    model: M,
-    tokenizer: Tokenizer,
+	model: E,
+	tokenizer: Tokenizer,
 }
 
-impl<M> SentenceTransformer<M>
-where
-    M: SBert,
+impl<E> SentenceTransformer<E>
+	where
+		E: EmbedderModel,
 {
-    pub fn try_new() -> Result<Self> {
-        let model_path = Api::new()?
-            .repo(Repo::new(M::MODEL_REPO_NAME.to_string(), RepoType::Model))
-            .get("model.safetensors")?;
+	pub fn new(model: E, tokenizer: Tokenizer) -> Self {
+		Self {
+			model,
+			tokenizer
+		}
+	}
 
-        let tokenizer_path = Api::new()?
-            .repo(Repo::new(
-                M::TOKENIZER_REPO_NAME.to_string(),
-                RepoType::Model,
-            ))
-            .get("tokenizer.json")?;
+	pub fn from_repo(repo_name: impl Into<String>, revision: impl Into<String>) -> Result<Self> {
+		let api = Api::new()?
+			.repo(Repo::with_revision(repo_name.into(), RepoType::Model, revision.into()));
 
-        let config = M::default_config();
-        let mut tokenizer = Tokenizer::from_file(tokenizer_path).map_err(E::msg)?;
+		Self::try_from(api)
+	}
 
-        if let Some(pp) = tokenizer.get_padding_mut() {
-            pp.strategy = tokenizers::PaddingStrategy::BatchLongest
-        } else {
-            let pp = tokenizers::PaddingParams {
-                strategy: tokenizers::PaddingStrategy::BatchLongest,
-                ..Default::default()
-            };
-            tokenizer.with_padding(Some(pp));
-        }
+	pub fn encode_batch_with_usage(
+		&self,
+		sentences: Sentences,
+		normalize: bool,
+	) -> Result<(Tensor, Usage)> {
+		let (embeddings, usage) = encode_batch_with_usage(
+			&self.model,
+			&self.tokenizer,
+			sentences,
+			normalize
+		)?;
+		Ok((embeddings, usage))
+	}
 
-        let vb =
-            unsafe { VarBuilder::from_mmaped_safetensors(&[model_path], DType::F32, &DEVICE)? };
-        let model = M::new(vb, &config)?;
-
-        Ok(Self { model, tokenizer })
-    }
-    pub fn encode_batch_with_usage(
-        &self,
-        sentences: Vec<&str>,
-        normalize: bool,
-    ) -> Result<(Tensor, Usage)> {
-        let tokens = self
-            .tokenizer
-            .encode_batch(sentences.to_vec(), true)
-            .map_err(E::msg)?;
-
-        let prompt_tokens = tokens.len() as u32;
-
-        let token_ids = tokens
-            .iter()
-            .map(|tokens| {
-                let tokens = tokens.get_ids().to_vec();
-                Tensor::new(tokens.as_slice(), &DEVICE)
-            })
-            .collect::<candle_core::Result<Vec<_>>>()?;
-
-        let token_ids = Tensor::stack(&token_ids, 0)?;
-        tracing::trace!("running inference on batch {:?}", token_ids.shape());
-        let embeddings = self.model.forward(&token_ids)?;
-        tracing::trace!("generated embeddings {:?}", embeddings.shape());
-
-        // Apply some avg-pooling by taking the mean embedding value for all tokens (including padding)
-        let (_n_sentence, out_tokens, _hidden_size) = embeddings.dims3()?;
-        let embeddings = (embeddings.sum(1)? / (out_tokens as f64))?;
-        let embeddings = if normalize {
-            normalize_l2(&embeddings)?
-        } else {
-            embeddings
-        };
-
-        let usage = Usage {
-            prompt_tokens,
-            total_tokens: prompt_tokens + (out_tokens as u32),
-        };
-        Ok((embeddings, usage))
-    }
-
-    pub fn encode_batch(&self, sentences: Vec<&str>, normalize: bool) -> Result<Tensor> {
-        Ok(self.encode_batch_with_usage(sentences, normalize)?.0)
-    }
+	pub fn encode_batch(&self, sentences: Sentences, normalize: bool) -> Result<Tensor> {
+		encode_batch(
+			&self.model,
+			&self.tokenizer,
+			sentences,
+			normalize
+		)
+	}
 }
 
-pub fn normalize_l2(v: &Tensor) -> candle_core::Result<Tensor> {
-    v.broadcast_div(&v.sqr()?.sum_keepdim(1)?.sqrt()?)
+impl<E> TryFrom<ApiRepo> for SentenceTransformer<E>
+	where
+		E: EmbedderModel,
+{
+	type Error = anyhow::Error;
+	fn try_from(api: ApiRepo) -> Result<Self> {
+		let (model, tokenizer) = load_model_and_tokenizer(api)?;
+		Ok(Self::new(model, tokenizer))
+	}
 }
 
 #[cfg(test)]
 mod test {
-    use super::*;
-    use crate::embedding::models::JinaBertBaseV2;
-    use std::time::Instant;
+	use super::*;
+	use std::time::Instant;
+	use candle_transformers::models::bert::BertModel;
 
-    #[test]
-    fn test_sentence_transformer() -> Result<()> {
-        let start = Instant::now();
+	#[test]
+	fn test_sentence_transformer() -> Result<()> {
+		let start = Instant::now();
 
-        let embedder: SentenceTransformer<JinaBertBaseV2> = SentenceTransformer::try_new()?;
+		let model_repo = "sentence-transformers/all-MiniLM-L6-v2";
+		let default_revision = "refs/pr/21".to_string();
+		let sentence_transformer: SentenceTransformer<BertModel> = SentenceTransformer::from_repo(
+			model_repo, default_revision
+		)?;
 
-        let sentences = vec![
-            "The cat sits outside",
-            "A man is playing guitar",
-            "I love pasta",
-            "The new movie is awesome",
-            "The cat plays in the garden",
-            "A woman watches TV",
-            "The new movie is so great",
-            "Do you like pizza?",
-        ];
+		let sentences =  Sentences::from(vec![
+			"The cat sits outside",
+			"A man is playing guitar",
+			"I love pasta",
+			"The new movie is awesome",
+			"The cat plays in the garden",
+			"A woman watches TV",
+			"The new movie is so great",
+			"Do you like pizza?",
+		]);
 
-        let model_load_duration = Instant::now() - start;
-        dbg!(format!(
-            "Model loaded in {}ms",
-            model_load_duration.as_millis()
-        ));
+		let model_load_duration = Instant::now() - start;
+		dbg!(format!(
+			"Model loaded in {}ms",
+			model_load_duration.as_millis()
+		));
 
-        let embeddings = embedder.encode_batch(sentences, true)?;
+		let embeddings = sentence_transformer.encode_batch(sentences, true)?;
 
-        dbg!(format!("Pooled embeddings {:?}", embeddings.shape()));
-        dbg!(format!(
-            "Inference done in {}ms",
-            (Instant::now() - start - model_load_duration).as_millis()
-        ));
+		dbg!(format!("Pooled embeddings {:?}", embeddings.shape()));
+		dbg!(format!(
+			"Inference done in {}ms",
+			(Instant::now() - start - model_load_duration).as_millis()
+		));
 
-        Ok(())
-    }
+		Ok(())
+	}
 }
+
+
