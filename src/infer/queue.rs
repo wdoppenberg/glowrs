@@ -1,19 +1,13 @@
+use std::sync::{Arc, Mutex};
 use anyhow::Result;
-use thiserror::Error;
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::Instant;
 use uuid::Uuid;
 use crate::embedding::embedder::JinaBertModel;
 use crate::embedding::sentence_transformer::SentenceTransformer;
 
-use crate::server::routes::{EmbeddingsRequest, EmbeddingsResponse, InnerEmbeddingsResponse};
 use crate::infer::queue::QueueCommand::Append;
-
-#[derive(Debug, Error)]
-pub enum InferError {
-    #[error("Request failed during generation: {0}")]
-    GenerationError(String),
-}
+use crate::server::data_models::{EmbeddingsRequest, EmbeddingsResponse, InnerEmbeddingsResponse};
 
 /// Queue entry
 #[derive(Debug)]
@@ -52,47 +46,38 @@ struct InferenceArgs {
 }
 
 // Background task responsible for the queue state
+// TODO: Introduce custom error type
 async fn queue_task(
 	args: InferenceArgs,
 	mut receiver: mpsc::UnboundedReceiver<QueueCommand>
-) {
+) -> Result<()>{
 	tracing::info!("Loading model: {}. Wait for model load.", args.model_repo);
     let sentence_transformer: SentenceTransformer<Embedder> = SentenceTransformer::from_repo(
 	    args.model_repo, args.revision
-    ).expect("Failed to load model.");
+    )?;
     tracing::info!("Model loaded");
 
     while let Some(cmd) = receiver.recv().await {
         match cmd {
             // TODO: Replace with separate (blocking) inference task
             Append(entry) => {
-	            tracing::trace!("Processing entry {}, added {:?}", entry.id, entry.queue_time);
+	            tracing::trace!("Processing entry {}, added {:?}s ago", entry.id, entry.queue_time.elapsed().as_secs());
                 let sentences = entry.embeddings_request.input;
 
             	let normalize = true;
-            	let (embeddings, usage) = sentence_transformer.encode_batch_with_usage(sentences, normalize).unwrap();
-            	let inner_responses: Vec<InnerEmbeddingsResponse> = embeddings
-            		.to_vec2().unwrap()
-                    .into_iter()
-            		.enumerate()
-            		.map(|(index, embedding)| InnerEmbeddingsResponse {
-            			object: "embedding".to_string(),
-            			embedding,
-            			index: index as u32,
-            		})
-            		.collect();
+	            // Infer embeddings
+            	let (embeddings, usage) = sentence_transformer.encode_batch_with_usage(sentences, normalize)?;
 
-            	let response = EmbeddingsResponse {
-            		object: "list".to_string(),
-            		data: inner_responses,
-            		model: entry.embeddings_request.model,
-            		usage,
-            	};
+            	let response = EmbeddingsResponse::from_embeddings(
+		            embeddings, usage, entry.embeddings_request.model
+	            );
 
             	let _ = entry.response_tx.send(Ok(response));
             }
         }
     }
+	
+	Ok(())
 }
 
 #[derive(Debug)]
@@ -100,38 +85,58 @@ enum QueueCommand {
     Append(Box<Entry>),
 }
 
-/// Request Queue
-#[derive(Debug, Clone)]
-pub(crate) struct Queue {
+
+struct State {
     /// Channel to communicate with the background queue task
-    queue_sender: mpsc::UnboundedSender<QueueCommand>,
+	thread_join_handle: std::thread::JoinHandle<Result<()>>
+}
+
+/// Request Queue
+#[derive(Clone)]
+pub(crate) struct Queue {
+    tx: mpsc::UnboundedSender<QueueCommand>,
+	state: Arc<Mutex<State>>
 }
 
 impl Queue {
-    pub(crate) fn new() -> Self {
+    pub(crate) fn new() -> Result<Self> {
+	    
         // Create channel
-        let (queue_sender, queue_receiver) = mpsc::unbounded_channel();
+        let (queue_tx, queue_rx) = mpsc::unbounded_channel();
 
 	    // Inference args
 	    let args = InferenceArgs {
 		    model_repo: "jinaai/jina-embeddings-v2-base-en",
 		    revision: "main"
 	    };
+	    
+	    let thread = std::thread::spawn(move || {
+            // Create a new Runtime to run tasks
+            let runtime = tokio::runtime::Builder::new_multi_thread()
+                .enable_all()
+                .thread_name("queue")
+                .worker_threads(4)
+                // Lower OS priority of worker threads to prioritize main runtime
+                // .on_thread_start(move || set_current_thread_priority_low())
+                .build()?;
 
-        // Launch blocking background queue task
-        // TODO: Not blocking atm, investigate whether necessary
-        tokio::spawn(queue_task(args, queue_receiver));
+            // Pull task requests off the channel and send them to the executor
+            runtime.block_on(queue_task(args, queue_rx))
+        });
 
-        Self { queue_sender }
+
+        let state = State { thread_join_handle: thread };
+	    
+	    Ok(Self { tx: queue_tx, state: Arc::new(Mutex::new(state))})
     }
 
     pub(crate) async fn append(
         &self,
         entry: Entry,
     ) -> Result<()> {
-        let _ = self.queue_sender.send(Append(Box::new(entry)));
+	    
+        self.tx.send(Append(Box::new(entry)))?;
 
         Ok(())
     }
 }
-

@@ -1,10 +1,10 @@
 use crate::embedding::embedder::{EmbedderModel, encode_batch, encode_batch_with_usage, load_model_and_tokenizer};
 use anyhow::Result;
-use candle_core::{Tensor};
+use candle_core::Tensor;
 use hf_hub::api::sync::{Api, ApiRepo};
 use hf_hub::{Repo, RepoType};
 use tokenizers::tokenizer::Tokenizer;
-use crate::server::routes::{Sentences, Usage};
+use crate::server::data_models::{Sentences, Usage};
 
 
 pub struct SentenceTransformer<E>

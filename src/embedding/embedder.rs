@@ -2,7 +2,7 @@ use anyhow::{Context, Error, Result};
 use candle_core::{DType, Module, Tensor};
 use candle_nn::VarBuilder;
 use candle_transformers::models::{
-    bert::Config as BertConfig, jina_bert::Config as JinaBertConfig,
+	bert::Config as BertConfig, jina_bert::Config as JinaBertConfig,
 };
 use hf_hub::api::sync::ApiRepo;
 use serde::de::DeserializeOwned;
@@ -13,7 +13,7 @@ use crate::utils::normalize_l2;
 
 // Re-exports
 pub use candle_transformers::models::{bert::BertModel, jina_bert::BertModel as JinaBertModel};
-use crate::server::routes::{Sentences, Usage};
+use crate::server::data_models::{Sentences, Usage};
 
 pub trait EmbedderModel: Sized {
     type Config: DeserializeOwned;

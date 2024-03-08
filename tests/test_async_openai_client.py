@@ -13,7 +13,7 @@ client = AsyncOpenAI(
 async def create_embeddings() -> CreateEmbeddingResponse:
 	start = time()
 	embeddings = await client.embeddings.create(
-		input=["This is a sentence that requires an embedding and is quite long for a normal sentence"] * 50,
+		input=["This is a sentence that requires an embedding and is quite long for a normal sentence"] * 10,
 		model="jina-embeddings-v2-base-en"
 	)
 	print(len(embeddings.data[0].embedding), embeddings.usage)
@@ -23,7 +23,7 @@ async def create_embeddings() -> CreateEmbeddingResponse:
 
 
 async def main():
-	e = await asyncio.gather(*(create_embeddings() for _ in range(50)))
+	e = await asyncio.gather(*(create_embeddings() for _ in range(10000)))
 
 	print(len(e))
 

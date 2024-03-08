@@ -8,15 +8,16 @@ use tracing::{info_span, Span};
 use tower_http::timeout::TimeoutLayer;
 use thiserror::__private::AsDisplay;
 use std::time::Duration;
+use anyhow::Result;
 
-use crate::server::routes::{default, text_embeddings};
+use crate::server::routes::{default, embeddings};
 use crate::server::state::ServerState;
 
-pub fn init_router() -> Router {
-    let state = Arc::new(ServerState::default());
+pub fn init_router() -> Result<Router> {
+    let state = Arc::new(ServerState::new()?);
 
     let router = Router::new()
-        .route("/v1/embeddings", post(text_embeddings::text_embeddings))
+        .route("/v1/embeddings", post(embeddings::infer_text_embeddings))
         .route("/health", get(default::health_check))
         .with_state(state)
         .layer((
@@ -44,5 +45,5 @@ pub fn init_router() -> Router {
                 }),
             TimeoutLayer::new(Duration::from_secs(15))
         ));
-    router
+    Ok(router)
 }
