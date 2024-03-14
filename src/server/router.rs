@@ -10,13 +10,13 @@ use thiserror::__private::AsDisplay;
 use std::time::Duration;
 use anyhow::Result;
 use crate::infer::Queue;
-use crate::infer::queue::{EmbeddingsEntry, QueueCommand};
+use crate::server::data_models::{EmbeddingsRequest, EmbeddingsResponse};
 
 use crate::server::routes::{default, embeddings};
-use crate::server::state::ServerState;
+use crate::server::state::{EmbeddingsProcessor, ServerState};
 
 pub fn init_router() -> Result<Router> {
-    let queue: Queue<QueueCommand<EmbeddingsEntry>> = Queue::new()?;
+    let queue: Queue<EmbeddingsRequest, EmbeddingsResponse, EmbeddingsProcessor> = Queue::new()?;
     let state = Arc::new(ServerState::new(&queue)?);
 
     let router = Router::new()

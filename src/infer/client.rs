@@ -3,14 +3,12 @@ use anyhow::Result;
 use tokio::sync::oneshot;
 use tokio::sync::mpsc::UnboundedSender;
 
-use crate::infer::queue::{EmbeddingsEntry, QueueCommand};
+use crate::infer::queue::{QueueCommand, QueueEntry, TaskRequest, TaskResponse};
 use crate::server::data_models::{EmbeddingsRequest, EmbeddingsResponse};
 
 
 /// Marker trait to identify data being sent/received
 pub trait Message {}
-
-
 
 pub trait CommunicationChannel<T: Message> {
     async fn send(&mut self, msg: T) -> Result<()>;
@@ -19,23 +17,25 @@ pub trait CommunicationChannel<T: Message> {
 
 pub trait Client {
     /// Type to send over channel / interface
-    type SendType;
+    type SendType: TaskRequest;
 
     /// Type to receive over channel / interface
-    type RecvType;
+    type RecvType: TaskResponse;
 	
 	#[allow(async_fn_in_trait)]
     async fn send(
         &self,
         value: Self::SendType,
     ) -> Result<oneshot::Receiver<Self::RecvType>>;
+	
+	fn get_tx(&self) -> UnboundedSender<QueueCommand<Self::SendType, Self::RecvType>>;
 }
 
 /// Embeddings inference struct
 #[derive(Clone)]
 pub struct EmbeddingsClient {
     /// Queue sender
-    tx: UnboundedSender<QueueCommand<EmbeddingsEntry>>,
+    tx: UnboundedSender<QueueCommand<EmbeddingsRequest, EmbeddingsResponse>>,
 }
 
 impl Client for EmbeddingsClient {
@@ -47,12 +47,16 @@ impl Client for EmbeddingsClient {
         value: Self::SendType,
     ) -> Result<oneshot::Receiver<Self::RecvType>> {
         let (queue_tx, queue_rx) = oneshot::channel();
-        let entry = EmbeddingsEntry::new(value, queue_tx);
+        let entry = QueueEntry::new(value, queue_tx);
 	    let command = QueueCommand::Append(entry);
         self.tx.send(command)?;
 
 	    Ok(queue_rx)
     }
+
+	fn get_tx(&self) -> UnboundedSender<QueueCommand<Self::SendType, Self::RecvType>> {
+		self.tx.clone()
+	}
 }
 
 impl Drop for EmbeddingsClient {
@@ -62,7 +66,7 @@ impl Drop for EmbeddingsClient {
 }
 
 impl EmbeddingsClient {
-	pub fn new(tx: UnboundedSender<QueueCommand<EmbeddingsEntry>>) -> Self {
+	pub fn new(tx: UnboundedSender<QueueCommand<EmbeddingsRequest, EmbeddingsResponse>>) -> Self {
 		Self {
 			tx
 		}

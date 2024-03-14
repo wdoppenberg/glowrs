@@ -1,160 +1,133 @@
-use std::any::Any;
-use std::collections::VecDeque;
+use std::marker::PhantomData;
 use anyhow::Result;
 use tokio::sync::oneshot;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 use tokio::time::Instant;
 use uuid::Uuid;
 
-use crate::model::embedder::JinaBertModel;
-use crate::model::sentence_transformer::SentenceTransformer;
 use crate::server::data_models::{EmbeddingsRequest, EmbeddingsResponse};
+
 
 // Generic types for task-specific data
 type TaskId = Uuid;
 
 // Marker trait for task requests
-trait TaskRequest: Send + Sync + 'static {}
+pub trait TaskRequest: Send + Sync + 'static {}
 
 // Marker trait for task responses
-trait TaskResponse: Send + Sync + 'static {}
+pub trait TaskResponse: Send + Sync + 'static {}
+
+impl TaskRequest for EmbeddingsRequest {}
+
+impl TaskResponse for EmbeddingsResponse {}
 
 // Trait representing a stateful task processor
-trait TaskProcessor {
-    // Concrete request and response types are defined within the implementation
-    type Request: TaskRequest;
-    type Response: TaskResponse;
-
+pub trait TaskProcessor<T: TaskRequest, O: TaskResponse>: Send {
     fn new() -> Result<Self> where Self: Sized;
-    fn handle_task(&mut self, request: Self::Request) -> Result<Self::Response>;
+    fn handle_task(&mut self, request: T) -> Result<O>;
 }
+
 /// Queue entry
 #[derive(Debug)]
-pub(crate) struct EmbeddingsEntry {
-	/// Identifier
-	pub id: TaskId,
+pub(crate) struct QueueEntry<T: TaskRequest, O: TaskResponse> {
+    /// Identifier
+    pub id: TaskId,
 
     /// Request
-    pub embeddings_request: EmbeddingsRequest,
+    pub request: T,
 
-    /// Response sender to communicate between the Infer struct and the batching_task
-    pub response_tx: oneshot::Sender<EmbeddingsResponse>,
+    /// Response sender
+    pub response_tx: oneshot::Sender<O>,
 
     /// Instant when this entry was queued
     pub queue_time: Instant,
 }
 
-impl EmbeddingsEntry {
-    pub fn new(embeddings_request: EmbeddingsRequest, response_tx: oneshot::Sender<EmbeddingsResponse>) -> Self {
+impl<T: TaskRequest, O: TaskResponse> QueueEntry<T, O> {
+    pub fn new(request: T, response_tx: oneshot::Sender<O>) -> Self {
         Self {
-	        id: Uuid::new_v4(),
-            embeddings_request,
+            id: Uuid::new_v4(),
+            request,
             response_tx,
-            queue_time: Instant::now()
+            queue_time: Instant::now(),
         }
     }
 }
 
-
-// TODO: Configurable by feature flag?
-type Embedder = JinaBertModel;
-
-struct InferenceArgs {
-	model_repo: &'static str,
-	revision: &'static str
-}
-
-// Background task responsible for the queue state
-async fn queue_task(
-	args: InferenceArgs,
-	mut receiver: UnboundedReceiver<QueueCommand<EmbeddingsEntry>>
-) -> Result<()>{
-	tracing::info!("Loading model: {}. Wait for model load.", args.model_repo);
-    let sentence_transformer: SentenceTransformer<Embedder> = SentenceTransformer::from_repo(
-	    args.model_repo, args.revision
-    )?;
-    tracing::info!("Model loaded");
-
-	use QueueCommand::*;
-    'main: while let Some(cmd) = receiver.recv().await {
-        match cmd {
-            Append(entry) => {
-	            tracing::trace!("Processing entry {}, added {:?}s ago", entry.id, entry.queue_time.elapsed().as_secs());
-                let sentences = entry.embeddings_request.input;
-
-            	let normalize = true;
-	            
-	            // Infer embeddings
-            	let (embeddings, usage) = sentence_transformer.encode_batch_with_usage(sentences, normalize)?;
-
-            	let response = EmbeddingsResponse::from_embeddings(
-		            embeddings, usage, entry.embeddings_request.model
-	            );
-
-	            // TODO: Handle result type
-            	let _ = entry.response_tx.send(response);
-            },
-	        Stop => {
-		        tracing::info!("Stopping queue task");
-		        break 'main
-	        }
-        }
-    }
-	
-	Ok(())
-}
-
-struct EmbeddingsTaskProcessor {
-	sentence_transformer: SentenceTransformer<Embedder>
-}
-
-
-
+// Generic queue command for extensibility
 #[derive(Debug)]
-pub(crate) enum QueueCommand<T>
+pub(crate) enum QueueCommand<T: TaskRequest, O: TaskResponse>
 where T: Send
 {
-    Append(T),
-	Stop
+    Append(QueueEntry<T, O>),
+    Stop,
 }
 
-
-/// Request Queue
+/// Request Queue with stateful task processor
 #[derive(Clone)]
-pub struct Queue<T> {
-    tx: UnboundedSender<T>,
+pub struct Queue<TReq, TResp, Proc>
+where TReq: TaskRequest,
+      TResp: TaskResponse,
+      Proc: TaskProcessor<TReq, TResp>
+{
+    tx: UnboundedSender<QueueCommand<TReq, TResp>>,
+	_processor: PhantomData<Proc>
 }
 
-impl Queue<QueueCommand<EmbeddingsEntry>> {
+impl<TReq, TResp, Proc> Queue<TReq, TResp, Proc>
+where TReq: TaskRequest,
+      TResp: TaskResponse,
+      Proc: TaskProcessor<TReq, TResp> + 'static
+{
     pub(crate) fn new() -> Result<Self> {
-	    
+        // TODO: Replace with MPMC w/ more worker threads
         // Create channel
         let (queue_tx, queue_rx) = unbounded_channel();
 
-	    // Inference args
-	    let args = InferenceArgs {
-		    model_repo: "jinaai/jina-embeddings-v2-base-en",
-		    revision: "main"
-	    };
-	    
-	    std::thread::spawn(move || {
+        // Create task processor
+        let processor = Proc::new()?;
+
+        std::thread::spawn(move || {
             // Create a new Runtime to run tasks
             let runtime = tokio::runtime::Builder::new_multi_thread()
                 .enable_all()
                 .thread_name("queue")
                 .worker_threads(4)
-                // Lower OS priority of worker threads to prioritize main runtime
-                // .on_thread_start(move || set_current_thread_priority_low())
                 .build()?;
 
             // Pull task requests off the channel and send them to the executor
-            runtime.block_on(queue_task(args, queue_rx))
+            runtime.block_on(queue_task(queue_rx, processor))
         });
 
-	    Ok(Self { tx: queue_tx })
+        Ok(Self { tx: queue_tx, _processor: PhantomData::default() })
     }
-	
-	pub(crate) fn get_tx(&self) -> UnboundedSender<QueueCommand<EmbeddingsEntry>> {
-		self.tx.clone()
-	}
+
+    pub(crate) fn get_tx(&self) -> UnboundedSender<QueueCommand<TReq, TResp>> {
+        self.tx.clone()
+    }
 }
+
+// Generic background task executor with stateful processor
+async fn queue_task<T: TaskRequest, O: TaskResponse, P: TaskProcessor<T, O>>(
+    mut receiver: UnboundedReceiver<QueueCommand<T, O>>,
+    mut processor: P,
+) -> Result<()> {
+    use QueueCommand::*;
+    'main: while let Some(cmd) = receiver.recv().await {
+        match cmd {
+            Append(entry) => {
+                // Process the task using the stateful processor
+                let response = processor.handle_task(entry.request)?;
+                let _ = entry.response_tx.send(response);
+            },
+            Stop => {
+                tracing::info!("Stopping queue task");
+                break 'main
+            }
+        }
+    }
+    Ok(())
+}
+
+
+

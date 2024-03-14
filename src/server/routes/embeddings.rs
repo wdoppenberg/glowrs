@@ -31,7 +31,6 @@ mod tests {
     use std::sync::Arc;
     use anyhow::Context;
     use crate::infer::Queue;
-    use crate::infer::queue::EmbeddingsEntry;
     use crate::server::data_models::{EncodingFormat::Float, Sentences};
 
     #[tokio::test]
