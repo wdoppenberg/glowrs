@@ -2,18 +2,17 @@ use anyhow::{Context, Error, Result};
 use candle_core::{DType, Module, Tensor};
 use candle_nn::VarBuilder;
 use candle_transformers::models::{
-	bert::Config as BertConfig, jina_bert::Config as JinaBertConfig,
+    bert::Config as BertConfig, jina_bert::Config as JinaBertConfig,
 };
 use hf_hub::api::sync::ApiRepo;
 use serde::de::DeserializeOwned;
 use tokenizers::Tokenizer;
 
-use crate::utils::device::DEVICE;
-use crate::utils::normalize_l2;
-
 // Re-exports
 pub use candle_transformers::models::{bert::BertModel, jina_bert::BertModel as JinaBertModel};
+
 use crate::server::data_models::{Sentences, Usage};
+use crate::utils::{normalize_l2, device::DEVICE};
 
 pub trait EmbedderModel: Sized {
     type Config: DeserializeOwned;
@@ -85,7 +84,8 @@ pub(crate) fn encode_batch_with_usage<E: EmbedderModel>(
 ) -> Result<(Tensor, Usage)> {
     let tokens = tokenizer
         .encode_batch(sentences.into(), true)
-        .map_err(Error::msg)?;
+        .map_err(Error::msg)
+        .context("Failed to encode batch.")?;
 
     let prompt_tokens = tokens.len() as u32;
 
@@ -103,7 +103,7 @@ pub(crate) fn encode_batch_with_usage<E: EmbedderModel>(
     let embeddings = model.inner_forward(&token_ids)?;
     tracing::trace!("generated embeddings {:?}", embeddings.shape());
 
-    // Apply some avg-pooling by taking the mean embedding value for all tokens (including padding)
+    // Apply some avg-pooling by taking the mean model value for all tokens (including padding)
     let (_n_sentence, out_tokens, _hidden_size) = embeddings.dims3()?;
     let embeddings = (embeddings.sum(1)? / (out_tokens as f64))?;
     let embeddings = if normalize {
@@ -129,6 +129,7 @@ pub(crate) fn encode_batch<E: EmbedderModel>(
     let (out, _) = encode_batch_with_usage(model, tokenizer, sentences, normalize)?;
     Ok(out)
 }
+
 
 #[cfg(test)]
 mod tests {

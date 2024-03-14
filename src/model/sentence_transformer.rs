@@ -1,4 +1,4 @@
-use crate::embedding::embedder::{EmbedderModel, encode_batch, encode_batch_with_usage, load_model_and_tokenizer};
+use crate::model::embedder::{EmbedderModel, encode_batch, encode_batch_with_usage, load_model_and_tokenizer};
 use anyhow::Result;
 use candle_core::Tensor;
 use hf_hub::api::sync::{Api, ApiRepo};

@@ -9,12 +9,15 @@ use tower_http::timeout::TimeoutLayer;
 use thiserror::__private::AsDisplay;
 use std::time::Duration;
 use anyhow::Result;
+use crate::infer::Queue;
+use crate::infer::queue::{EmbeddingsEntry, QueueCommand};
 
 use crate::server::routes::{default, embeddings};
 use crate::server::state::ServerState;
 
 pub fn init_router() -> Result<Router> {
-    let state = Arc::new(ServerState::new()?);
+    let queue: Queue<QueueCommand<EmbeddingsEntry>> = Queue::new()?;
+    let state = Arc::new(ServerState::new(&queue)?);
 
     let router = Router::new()
         .route("/v1/embeddings", post(embeddings::infer_text_embeddings))
