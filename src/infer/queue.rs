@@ -22,29 +22,29 @@ impl TaskRequest for EmbeddingsRequest {}
 impl TaskResponse for EmbeddingsResponse {}
 
 // Trait representing a stateful task processor
-pub trait TaskProcessor<T: TaskRequest, O: TaskResponse>: Send {
+pub trait TaskProcessor<TReq: TaskRequest, TResp: TaskResponse>: Send {
     fn new() -> Result<Self> where Self: Sized;
-    fn handle_task(&mut self, request: T) -> Result<O>;
+    fn handle_task(&mut self, request: TReq) -> Result<TResp>;
 }
 
 /// Queue entry
 #[derive(Debug)]
-pub(crate) struct QueueEntry<T: TaskRequest, O: TaskResponse> {
+pub(crate) struct QueueEntry<TReq: TaskRequest, TResp: TaskResponse> {
     /// Identifier
     pub id: TaskId,
 
     /// Request
-    pub request: T,
+    pub request: TReq,
 
     /// Response sender
-    pub response_tx: oneshot::Sender<O>,
+    pub response_tx: oneshot::Sender<TResp>,
 
     /// Instant when this entry was queued
     pub queue_time: Instant,
 }
 
-impl<T: TaskRequest, O: TaskResponse> QueueEntry<T, O> {
-    pub fn new(request: T, response_tx: oneshot::Sender<O>) -> Self {
+impl<TReq: TaskRequest, TResp: TaskResponse> QueueEntry<TReq, TResp> {
+    pub fn new(request: TReq, response_tx: oneshot::Sender<TResp>) -> Self {
         Self {
             id: Uuid::new_v4(),
             request,
@@ -56,10 +56,10 @@ impl<T: TaskRequest, O: TaskResponse> QueueEntry<T, O> {
 
 // Generic queue command for extensibility
 #[derive(Debug)]
-pub(crate) enum QueueCommand<T: TaskRequest, O: TaskResponse>
-where T: Send
+pub(crate) enum QueueCommand<TReq: TaskRequest, TResp: TaskResponse>
+where TReq: Send
 {
-    Append(QueueEntry<T, O>),
+    Append(QueueEntry<TReq, TResp>),
     Stop,
 }
 
@@ -99,7 +99,7 @@ where TReq: TaskRequest,
             runtime.block_on(queue_task(queue_rx, processor))
         });
 
-        Ok(Self { tx: queue_tx, _processor: PhantomData::default() })
+        Ok(Self { tx: queue_tx, _processor: PhantomData })
     }
 
     pub(crate) fn get_tx(&self) -> UnboundedSender<QueueCommand<TReq, TResp>> {
@@ -108,14 +108,19 @@ where TReq: TaskRequest,
 }
 
 // Generic background task executor with stateful processor
-async fn queue_task<T: TaskRequest, O: TaskResponse, P: TaskProcessor<T, O>>(
-    mut receiver: UnboundedReceiver<QueueCommand<T, O>>,
-    mut processor: P,
-) -> Result<()> {
+async fn queue_task<TReq, TResp, Proc>(
+    mut receiver: UnboundedReceiver<QueueCommand<TReq, TResp>>,
+    mut processor: Proc,
+) -> Result<()>
+where TReq: TaskRequest,
+      TResp: TaskResponse,
+      Proc: TaskProcessor<TReq, TResp> + 'static
+{
     use QueueCommand::*;
     'main: while let Some(cmd) = receiver.recv().await {
         match cmd {
             Append(entry) => {
+                tracing::trace!("Processing task {}, added {}ms ago", entry.id, entry.queue_time.elapsed().as_millis());
                 // Process the task using the stateful processor
                 let response = processor.handle_task(entry.request)?;
                 let _ = entry.response_tx.send(response);

@@ -3,7 +3,7 @@ mod client;
 
 use thiserror::Error;
 
-pub use client::{Client, EmbeddingsClient};
+pub use client::{EmbeddingsClient};
 pub use queue::Queue;
 
 #[derive(Debug, Error)]

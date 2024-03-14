@@ -15,19 +15,19 @@ pub trait CommunicationChannel<T: Message> {
     async fn recv(&mut self) -> Result<T>;
 }
 
-pub trait Client {
+pub(crate) trait Client {
     /// Type to send over channel / interface
     type SendType: TaskRequest;
 
     /// Type to receive over channel / interface
     type RecvType: TaskResponse;
-	
+
 	#[allow(async_fn_in_trait)]
     async fn send(
         &self,
         value: Self::SendType,
     ) -> Result<oneshot::Receiver<Self::RecvType>>;
-	
+
 	fn get_tx(&self) -> UnboundedSender<QueueCommand<Self::SendType, Self::RecvType>>;
 }
 
@@ -66,7 +66,7 @@ impl Drop for EmbeddingsClient {
 }
 
 impl EmbeddingsClient {
-	pub fn new(tx: UnboundedSender<QueueCommand<EmbeddingsRequest, EmbeddingsResponse>>) -> Self {
+	pub(crate) fn new(tx: UnboundedSender<QueueCommand<EmbeddingsRequest, EmbeddingsResponse>>) -> Self {
 		Self {
 			tx
 		}
