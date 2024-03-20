@@ -1,137 +1,155 @@
 use anyhow::Result;
-use thiserror::Error;
-use tokio::sync::{mpsc, oneshot};
+use std::marker::PhantomData;
+use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
+use tokio::sync::oneshot;
 use tokio::time::Instant;
 use uuid::Uuid;
-use crate::embedding::embedder::JinaBertModel;
-use crate::embedding::sentence_transformer::SentenceTransformer;
 
-use crate::server::routes::{EmbeddingsRequest, EmbeddingsResponse, InnerEmbeddingsResponse};
-use crate::infer::queue::QueueCommand::Append;
+use super::{TaskId, TaskRequest, TaskResponse};
 
-#[derive(Debug, Error)]
-pub enum InferError {
-    #[error("Request failed during generation: {0}")]
-    GenerationError(String),
+/// Trait representing a stateful task processor
+pub trait RequestHandler<TReq, TResp>
+where
+    TReq: TaskRequest,
+    TResp: TaskResponse,
+    Self: Sized
+{
+    // TODO: Optional initialization args?
+    fn new() -> Result<Self>;
+    fn handle(&mut self, request: TReq) -> Result<TResp>;
 }
 
 /// Queue entry
 #[derive(Debug)]
-pub(crate) struct Entry {
-	/// Identifier
-	pub id: Uuid,
+pub(crate) struct QueueEntry<TReq, TResp>
+where
+    TReq: TaskRequest,
+    TResp: TaskResponse,
+{
+    /// Identifier
+    pub id: TaskId,
 
     /// Request
-    pub embeddings_request: EmbeddingsRequest,
+    pub request: TReq,
 
-    /// Response sender to communicate between the Infer struct and the batching_task
-    pub response_tx: oneshot::Sender<Result<EmbeddingsResponse>>,
+    /// Response sender
+    pub response_tx: oneshot::Sender<TResp>,
 
     /// Instant when this entry was queued
     pub queue_time: Instant,
 }
 
-impl Entry {
-    pub fn new(embeddings_request: EmbeddingsRequest, response_tx: oneshot::Sender<Result<EmbeddingsResponse>>) -> Self {
+
+/// Queue entry
+impl<TReq: TaskRequest, TResp: TaskResponse> QueueEntry<TReq, TResp> {
+    pub fn new(request: TReq, response_tx: oneshot::Sender<TResp>) -> Self {
         Self {
-	        id: Uuid::new_v4(),
-            embeddings_request,
+            id: Uuid::new_v4(),
+            request,
             response_tx,
-            queue_time: Instant::now()
+            queue_time: Instant::now(),
         }
     }
 }
 
-
-// TODO: Configurable by feature flag?
-type Embedder = JinaBertModel;
-
-struct InferenceArgs {
-	model_repo: &'static str,
-	revision: &'static str
+/// Queue command
+#[derive(Debug)]
+// TODO: Use stop command
+#[allow(dead_code)]
+pub(crate) enum QueueCommand<TReq: TaskRequest, TResp: TaskResponse>
+where
+    TReq: Send,
+{
+    Append(QueueEntry<TReq, TResp>),
+    Stop,
 }
 
-// Background task responsible for the queue state
-async fn queue_task(
-	args: InferenceArgs,
-	mut receiver: mpsc::UnboundedReceiver<QueueCommand>
-) {
-	tracing::info!("Loading model: {}. Wait for model load.", args.model_repo);
-    let sentence_transformer: SentenceTransformer<Embedder> = SentenceTransformer::from_repo(
-	    args.model_repo, args.revision
-    ).expect("Failed to load model.");
-    tracing::info!("Model loaded");
+/// Request Queue with stateful task processor
+#[derive(Clone)]
+pub struct Queue<TReq, TResp, TProc>
+where
+    TReq: TaskRequest,
+    TResp: TaskResponse,
+    TProc: RequestHandler<TReq, TResp>,
+{
+    tx: UnboundedSender<QueueCommand<TReq, TResp>>,
+    _processor: PhantomData<TProc>,
+}
 
-    while let Some(cmd) = receiver.recv().await {
+impl<TReq, TResp, TProc> Queue<TReq, TResp, TProc>
+where
+    TReq: TaskRequest,
+    TResp: TaskResponse,
+    TProc: RequestHandler<TReq, TResp> + 'static,
+{
+    pub(crate) fn new() -> Result<Self> {
+        
+        // TODO: Replace with MPMC w/ more worker threads (if CPU)
+        // Create channel
+        let (queue_tx, queue_rx) = unbounded_channel();
+        
+        let _join_handle = std::thread::spawn(move || {
+            // Create task processor
+            let processor = TProc::new()?;
+            
+            // Create a new Runtime to run tasks
+            let runtime = tokio::runtime::Builder::new_multi_thread()
+                .enable_all()
+                .thread_name(format!("queue-{}", Uuid::new_v4()))
+                // TODO: Make configurable
+                .worker_threads(4)
+                .build()?;
+
+            // Pull task requests off the channel and send them to the executor
+            runtime.block_on(queue_task(queue_rx, processor))
+        });
+
+        Ok(Self {
+            tx: queue_tx,
+            _processor: PhantomData,
+        })
+    }
+
+    pub(crate) fn get_tx(&self) -> UnboundedSender<QueueCommand<TReq, TResp>> {
+        self.tx.clone()
+    }
+}
+
+// Generic background task executor with stateful processor
+async fn queue_task<TReq, TResp, TProc>(
+    mut receiver: UnboundedReceiver<QueueCommand<TReq, TResp>>,
+    mut processor: TProc,
+) -> Result<()>
+where
+    TReq: TaskRequest,
+    TResp: TaskResponse,
+    TProc: RequestHandler<TReq, TResp> + 'static,
+{
+    'main: while let Some(cmd) = receiver.recv().await {
+        use QueueCommand::*;
+        
         match cmd {
-            // TODO: Replace with separate (blocking) inference task
             Append(entry) => {
-	            tracing::trace!("Processing entry {}, added {:?}", entry.id, entry.queue_time);
-                let sentences = entry.embeddings_request.input;
-
-            	let normalize = true;
-            	let (embeddings, usage) = sentence_transformer.encode_batch_with_usage(sentences, normalize).unwrap();
-            	let inner_responses: Vec<InnerEmbeddingsResponse> = embeddings
-            		.to_vec2().unwrap()
-                    .into_iter()
-            		.enumerate()
-            		.map(|(index, embedding)| InnerEmbeddingsResponse {
-            			object: "embedding".to_string(),
-            			embedding,
-            			index: index as u32,
-            		})
-            		.collect();
-
-            	let response = EmbeddingsResponse {
-            		object: "list".to_string(),
-            		data: inner_responses,
-            		model: entry.embeddings_request.model,
-            		usage,
-            	};
-
-            	let _ = entry.response_tx.send(Ok(response));
+                tracing::trace!(
+                    "Processing task {}, added {}ms ago",
+                    entry.id,
+                    entry.queue_time.elapsed().as_millis()
+                );
+                
+                // Process the task 
+                let response = processor.handle(entry.request)?;
+                
+                if entry.response_tx.send(response).is_ok() {
+                    tracing::trace!("Successfully sent response for task {}", entry.id)
+                } else {
+                    tracing::error!("Failed to send response for task {}", entry.id)
+                }
+            }
+            Stop => {
+                tracing::info!("Stopping queue task");
+                break 'main;
             }
         }
     }
+    Ok(())
 }
-
-#[derive(Debug)]
-enum QueueCommand {
-    Append(Box<Entry>),
-}
-
-/// Request Queue
-#[derive(Debug, Clone)]
-pub(crate) struct Queue {
-    /// Channel to communicate with the background queue task
-    queue_sender: mpsc::UnboundedSender<QueueCommand>,
-}
-
-impl Queue {
-    pub(crate) fn new() -> Self {
-        // Create channel
-        let (queue_sender, queue_receiver) = mpsc::unbounded_channel();
-
-	    // Inference args
-	    let args = InferenceArgs {
-		    model_repo: "jinaai/jina-embeddings-v2-base-en",
-		    revision: "main"
-	    };
-
-        // Launch blocking background queue task
-        // TODO: Not blocking atm, investigate whether necessary
-        tokio::spawn(queue_task(args, queue_receiver));
-
-        Self { queue_sender }
-    }
-
-    pub(crate) async fn append(
-        &self,
-        entry: Entry,
-    ) -> Result<()> {
-        let _ = self.queue_sender.send(Append(Box::new(entry)));
-
-        Ok(())
-    }
-}
-

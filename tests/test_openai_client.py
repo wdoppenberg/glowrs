@@ -10,7 +10,7 @@ client = OpenAI(
 
 start = time()
 print(client.embeddings.create(
-	input=["This is a sentence that requires an embedding"] * 50,
+	input=["This is a sentence that requires an model"] * 50,
 	model="jina-embeddings-v2-base-en"
 ))
 

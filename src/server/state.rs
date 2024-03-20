@@ -1,15 +1,22 @@
-use crate::infer::Infer;
+use anyhow::Result;
+use crate::infer::embed::EmbeddingsProcessor;
 
+use crate::infer::Queue;
+use crate::infer::embed::EmbeddingsClient;
+use crate::server::data_models::{EmbeddingsRequest, EmbeddingsResponse};
 
+/// Represents the state of the server.
 #[derive(Clone)]
 pub struct ServerState {
-	pub infer: Infer,
+    pub embeddings_client: EmbeddingsClient,
 }
 
-impl Default for ServerState {
-	fn default() -> Self {
-		let infer = Infer::new();
-		Self { infer }
-	}
-}
+impl ServerState {
+    pub fn new(
+        embed_queue: &Queue<EmbeddingsRequest, EmbeddingsResponse, EmbeddingsProcessor>,
+    ) -> Result<Self> {
+        let embeddings_client = EmbeddingsClient::new(embed_queue.get_tx());
 
+        Ok(Self { embeddings_client })
+    }
+}
