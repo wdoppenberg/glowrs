@@ -1,14 +1,14 @@
-pub mod routes;
+mod init;
 mod state;
+pub mod routes;
 pub mod utils;
-mod router;
 pub mod data_models;
+
+pub use init::init_router;
 
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use thiserror::Error;
-pub use router::init_router;
-
 
 #[derive(Error, Debug)]
 pub enum ServerError {

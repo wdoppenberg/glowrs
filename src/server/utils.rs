@@ -1,11 +1,20 @@
+use anyhow::Result;
 use tokio::signal;
 
-pub async fn shutdown_signal() {
+type Nullary = fn() -> Result<()>;
+
+pub async fn shutdown_signal(shutdown_fns_opt: Option<&[Nullary]>) {
     let ctrl_c = async {
         signal::ctrl_c()
             .await
             .expect("failed to install Ctrl+C handler");
     };
+    
+    if let Some(shutdown_fns) = shutdown_fns_opt {
+        for shutdown_fn in shutdown_fns {
+            shutdown_fn().expect("Failed to call shutdown function.");
+        }
+    }
 
     #[cfg(unix)]
     let terminate = async {

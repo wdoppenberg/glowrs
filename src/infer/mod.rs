@@ -1,14 +1,16 @@
 pub mod queue;
 mod client;
+pub mod embed;
 
-use thiserror::Error;
-
-pub use client::{EmbeddingsClient};
 pub use queue::Queue;
+use uuid::Uuid;
 
-#[derive(Debug, Error)]
-pub enum InferError {
-    #[error("Request failed during generation: {0}")]
-    GenerationError(String),
-}
+// Marker trait for task requests
+pub trait TaskRequest: Send + Sync + 'static {}
+
+// Marker trait for task responses
+pub trait TaskResponse: Send + Sync + 'static {}
+
+// Generic types for task-specific data
+type TaskId = Uuid;
 

@@ -4,7 +4,8 @@ use tokio::net::TcpListener;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use glowrs::utils::device::print_device_info;
-use glowrs::server::{init_router, utils};
+use glowrs::server::utils;
+use glowrs::server::init_router;
 
 #[tokio::main(flavor = "multi_thread", worker_threads = 10)]
 async fn main() -> Result<ExitCode> {
@@ -29,7 +30,7 @@ async fn main() -> Result<ExitCode> {
     let listener = TcpListener::bind("127.0.0.1:3000").await?;
     tracing::info!("listening on {}", listener.local_addr()?);
     axum::serve(listener, router)
-        .with_graceful_shutdown(utils::shutdown_signal())
+        .with_graceful_shutdown(utils::shutdown_signal(None))
         .await?;
 
     Ok(ExitCode::SUCCESS)

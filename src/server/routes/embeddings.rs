@@ -43,7 +43,7 @@ mod tests {
         let embeddings_request = EmbeddingsRequest {
             input: Sentences::from(Vec::from(["sentence sentence sentence"; 5])),
             model: "whatever".to_string(),
-            encoding_format: Float
+            encoding_format: Some(Float)
         }; 
 
         let start = Instant::now();

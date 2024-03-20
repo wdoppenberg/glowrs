@@ -6,18 +6,19 @@ use axum::http::Request;
 use axum::extract::MatchedPath;
 use tracing::{info_span, Span};
 use tower_http::timeout::TimeoutLayer;
-use thiserror::__private::AsDisplay;
 use std::time::Duration;
-use anyhow::Result;
+use thiserror::__private::AsDisplay;
+
+use crate::infer::embed::EmbeddingsProcessor;
 use crate::infer::Queue;
 use crate::server::data_models::{EmbeddingsRequest, EmbeddingsResponse};
-
 use crate::server::routes::{default, embeddings};
-use crate::server::state::{EmbeddingsProcessor, ServerState};
+use crate::server::state::ServerState;
 
-pub fn init_router() -> Result<Router> {
-    let queue: Queue<EmbeddingsRequest, EmbeddingsResponse, EmbeddingsProcessor> = Queue::new()?;
-    let state = Arc::new(ServerState::new(&queue)?);
+pub fn init_router() -> anyhow::Result<Router> {
+    let embed_queue: Queue<EmbeddingsRequest, EmbeddingsResponse, EmbeddingsProcessor> = Queue::new()?;
+    
+    let state = Arc::new(ServerState::new(&embed_queue)?);
 
     let router = Router::new()
         .route("/v1/embeddings", post(embeddings::infer_text_embeddings))

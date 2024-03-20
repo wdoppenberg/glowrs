@@ -46,7 +46,7 @@ pub enum EncodingFormat {
 pub struct EmbeddingsRequest {
     pub input: Sentences,
     pub model: String,
-    pub encoding_format: EncodingFormat,
+    pub encoding_format: Option<EncodingFormat>,
 }
 
 #[derive(Debug, Serialize, PartialEq, Default)]
