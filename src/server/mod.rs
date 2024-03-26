@@ -4,7 +4,7 @@ pub mod routes;
 pub mod utils;
 pub mod data_models;
 
-pub use init::init_router;
+pub use init::{init_router, RouterArgs};
 
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};

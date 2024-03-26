@@ -1,14 +1,24 @@
 use anyhow::Result;
 use std::process::ExitCode;
+use clap::Parser;
 use tokio::net::TcpListener;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use glowrs::utils::device::print_device_info;
 use glowrs::server::utils;
-use glowrs::server::init_router;
+use glowrs::server::{init_router, RouterArgs};
 
-#[tokio::main(flavor = "multi_thread", worker_threads = 10)]
+
+#[derive(Debug, Parser)]
+pub struct App {
+    #[clap(flatten)]
+    pub router_args: RouterArgs,
+}
+
+#[tokio::main(flavor = "multi_thread")]
 async fn main() -> Result<ExitCode> {
+    let args = App::parse();
+    
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
@@ -24,8 +34,8 @@ async fn main() -> Result<ExitCode> {
 
     // TODO: Configuration passing
     print_device_info();
-
-    let router = init_router()?;
+    
+    let router = init_router(&args.router_args)?;
 
     let listener = TcpListener::bind("127.0.0.1:3000").await?;
     tracing::info!("listening on {}", listener.local_addr()?);

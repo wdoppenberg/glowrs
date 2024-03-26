@@ -4,14 +4,13 @@ use tokio::sync::oneshot;
 use tokio::sync::mpsc::UnboundedSender;
 
 use crate::infer::queue::QueueCommand;
-use crate::infer::{TaskRequest, TaskResponse};
 
 pub(crate) trait Client {
     /// Type to send over channel / interface
-    type SendType: TaskRequest;
+    type SendType: Send + Sync + 'static;
 
     /// Type to receive over channel / interface
-    type RecvType: TaskResponse;
+    type RecvType: Send + Sync + 'static;
 
 	#[allow(async_fn_in_trait)]
     async fn send(
@@ -19,6 +18,7 @@ pub(crate) trait Client {
         value: Self::SendType,
     ) -> Result<oneshot::Receiver<Self::RecvType>>;
 
+	// TODO: Get rid of this
 	fn get_tx(&self) -> UnboundedSender<QueueCommand<Self::SendType, Self::RecvType>>;
 }
 

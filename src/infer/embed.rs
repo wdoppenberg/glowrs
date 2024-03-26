@@ -3,8 +3,8 @@ use tokio::sync::oneshot;
 use candle_transformers::models::jina_bert::BertModel as JinaBertModel;
 
 use crate::infer::client::Client;
+use crate::infer::Queue;
 use crate::infer::queue::{QueueCommand, QueueEntry, RequestHandler};
-use crate::infer::{TaskRequest, TaskResponse};
 use crate::model::sentence_transformer::SentenceTransformer;
 use crate::server::data_models::{EmbeddingsRequest, EmbeddingsResponse};
 
@@ -37,9 +37,9 @@ impl Client for EmbeddingsClient {
 }
 
 impl EmbeddingsClient {
-	pub(crate) fn new(tx: UnboundedSender<QueueCommand<EmbeddingsRequest, EmbeddingsResponse>>) -> Self {
+	pub(crate) fn new(queue: &Queue<EmbeddingsRequest, EmbeddingsResponse, EmbeddingsHandler>) -> Self {
 		Self {
-			tx
+			tx: queue.tx.clone()
 		}
 	}
 	pub async fn generate_embedding(&self, request: EmbeddingsRequest) -> anyhow::Result<EmbeddingsResponse> {
@@ -50,16 +50,17 @@ impl EmbeddingsClient {
 
 type Embedder = JinaBertModel;
 
-pub struct EmbeddingsProcessor {
+pub struct EmbeddingsHandler {
     sentence_transformer: SentenceTransformer<Embedder>,
 }
 
-impl RequestHandler<EmbeddingsRequest, EmbeddingsResponse> for EmbeddingsProcessor {
-    fn new() -> anyhow::Result<Self>
+impl EmbeddingsHandler {
+	pub fn new(
+		model_repo: &str,
+		revision: &str,
+	) -> anyhow::Result<Self>
     {
 	    // TODO: Don't hardcode
-        let model_repo = "jinaai/jina-embeddings-v2-base-en";
-        let revision = "main";
         tracing::info!("Loading model: {}. Wait for model load.", model_repo);
         let sentence_transformer: SentenceTransformer<Embedder> =
             SentenceTransformer::from_repo(model_repo, revision)?;
@@ -69,24 +70,22 @@ impl RequestHandler<EmbeddingsRequest, EmbeddingsResponse> for EmbeddingsProcess
             sentence_transformer,
         })
     }
+}
 
+impl RequestHandler<EmbeddingsRequest, EmbeddingsResponse> for EmbeddingsHandler {
     fn handle(&mut self, request: EmbeddingsRequest) -> anyhow::Result<EmbeddingsResponse> {
         let sentences = request.input;
 
-	    // TODO: Don't hardcode
-        let normalize = false;
+	    // TODO: Is this even necessary?
+        const NORMALIZE: bool = false;
 
         // Infer embeddings
         let (embeddings, usage) = self
             .sentence_transformer
-            .encode_batch_with_usage(sentences, normalize)?;
+            .encode_batch_with_usage(sentences, NORMALIZE)?;
 
         let response = EmbeddingsResponse::from_embeddings(embeddings, usage, request.model);
 
         Ok(response)
     }
 }
-
-impl TaskRequest for EmbeddingsRequest {}
-
-impl TaskResponse for EmbeddingsResponse {}

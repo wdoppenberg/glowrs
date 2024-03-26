@@ -47,6 +47,8 @@ pub struct EmbeddingsRequest {
     pub input: Sentences,
     pub model: String,
     pub encoding_format: Option<EncodingFormat>,
+    pub dimensions: Option<usize>,
+    pub user: Option<String>
 }
 
 #[derive(Debug, Serialize, PartialEq, Default)]
