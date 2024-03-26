@@ -5,17 +5,16 @@ use tokio::sync::oneshot;
 use tokio::time::Instant;
 use uuid::Uuid;
 
-use super::{TaskId, TaskRequest, TaskResponse};
+use super::{TaskId};
 
 /// Trait representing a stateful task processor
 pub trait RequestHandler<TReq, TResp>
 where
-    TReq: TaskRequest,
-    TResp: TaskResponse,
+    Self: Send,
+    TReq: Send + Sync + 'static,
+    TResp: Send + Sync + 'static,
     Self: Sized
 {
-    // TODO: Optional initialization args?
-    fn new() -> Result<Self>;
     fn handle(&mut self, request: TReq) -> Result<TResp>;
 }
 
@@ -23,8 +22,8 @@ where
 #[derive(Debug)]
 pub(crate) struct QueueEntry<TReq, TResp>
 where
-    TReq: TaskRequest,
-    TResp: TaskResponse,
+    TReq: Send + Sync + 'static,
+    TResp: Send + Sync + 'static,
 {
     /// Identifier
     pub id: TaskId,
@@ -41,7 +40,7 @@ where
 
 
 /// Queue entry
-impl<TReq: TaskRequest, TResp: TaskResponse> QueueEntry<TReq, TResp> {
+impl<TReq, TResp> QueueEntry<TReq, TResp> where TReq: Send + Sync + 'static, TResp: Send + Sync + 'static {
     pub fn new(request: TReq, response_tx: oneshot::Sender<TResp>) -> Self {
         Self {
             id: Uuid::new_v4(),
@@ -56,9 +55,9 @@ impl<TReq: TaskRequest, TResp: TaskResponse> QueueEntry<TReq, TResp> {
 #[derive(Debug)]
 // TODO: Use stop command
 #[allow(dead_code)]
-pub(crate) enum QueueCommand<TReq: TaskRequest, TResp: TaskResponse>
+pub(crate) enum QueueCommand<TReq, TResp>
 where
-    TReq: Send,
+    TReq: Send, TReq: Send + Sync + 'static, TResp: Send + Sync + 'static
 {
     Append(QueueEntry<TReq, TResp>),
     Stop,
@@ -68,29 +67,27 @@ where
 #[derive(Clone)]
 pub struct Queue<TReq, TResp, TProc>
 where
-    TReq: TaskRequest,
-    TResp: TaskResponse,
+    TReq: Send + Sync + 'static,
+    TResp: Send + Sync + 'static,
     TProc: RequestHandler<TReq, TResp>,
 {
-    tx: UnboundedSender<QueueCommand<TReq, TResp>>,
+    pub(crate) tx: UnboundedSender<QueueCommand<TReq, TResp>>,
     _processor: PhantomData<TProc>,
 }
 
 impl<TReq, TResp, TProc> Queue<TReq, TResp, TProc>
 where
-    TReq: TaskRequest,
-    TResp: TaskResponse,
-    TProc: RequestHandler<TReq, TResp> + 'static,
+    TReq: Send + Sync + 'static,
+    TResp: Send + Sync + 'static,
+    TProc: RequestHandler<TReq, TResp> + Send + 'static,
 {
-    pub(crate) fn new() -> Result<Self> {
+    pub(crate) fn new(processor: TProc) -> Result<Self> {
         
         // TODO: Replace with MPMC w/ more worker threads (if CPU)
         // Create channel
         let (queue_tx, queue_rx) = unbounded_channel();
         
         let _join_handle = std::thread::spawn(move || {
-            // Create task processor
-            let processor = TProc::new()?;
             
             // Create a new Runtime to run tasks
             let runtime = tokio::runtime::Builder::new_multi_thread()
@@ -109,10 +106,6 @@ where
             _processor: PhantomData,
         })
     }
-
-    pub(crate) fn get_tx(&self) -> UnboundedSender<QueueCommand<TReq, TResp>> {
-        self.tx.clone()
-    }
 }
 
 // Generic background task executor with stateful processor
@@ -121,8 +114,8 @@ async fn queue_task<TReq, TResp, TProc>(
     mut processor: TProc,
 ) -> Result<()>
 where
-    TReq: TaskRequest,
-    TResp: TaskResponse,
+    TReq: Send + Sync + 'static,
+    TResp: Send + Sync + 'static,
     TProc: RequestHandler<TReq, TResp> + 'static,
 {
     'main: while let Some(cmd) = receiver.recv().await {
@@ -152,4 +145,61 @@ where
         }
     }
     Ok(())
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    
+    #[derive(Debug, PartialEq)]
+    struct Task {
+        name: String,
+    }
+    
+    impl Task {
+        fn new(name: String) -> Self {
+            Self { name }
+        }
+    }
+    
+    struct TaskProcessor;
+    
+    impl TaskProcessor {
+         fn new() -> Result<Self> {
+            Ok(Self)
+        }
+    }
+    
+    impl RequestHandler<Task, Task> for TaskProcessor {
+       
+        
+        fn handle(&mut self, request: Task) -> Result<Task> {
+            let new_name = format!("{}-processed", request.name);
+            Ok(Task::new(new_name))
+        }
+    }
+
+    #[tokio::test]
+    async fn test_queue() {
+        // Create a new processor
+        let processor = TaskProcessor::new().unwrap();
+        
+        // Create a new queue
+        let queue: Queue<Task, Task, TaskProcessor> = Queue::new(processor).unwrap();
+
+        // Set a task name
+        let name = "test".to_string();
+        
+        // Create a new task
+        let task = Task::new(name.clone());
+
+        // Send the task to the queue
+        let (task_tx, task_rx) = oneshot::channel();
+        queue.tx.send(QueueCommand::Append(QueueEntry::new(task, task_tx))).unwrap();
+
+        // Wait for the response
+        let response = task_rx.await.unwrap();
+        assert_eq!(response, Task::new(format!("{}-processed", name).to_string()));
+    }
 }

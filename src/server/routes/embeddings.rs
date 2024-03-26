@@ -30,20 +30,27 @@ mod tests {
     use tokio::time::Instant;
     use std::sync::Arc;
     use anyhow::Context;
-    use crate::infer::Queue;
+    use crate::infer::embed::EmbeddingsHandler;
+
     use crate::server::data_models::{EncodingFormat::Float, Sentences};
 
     #[tokio::test]
     async fn test_text_embeddings_request() -> Result<()> {
-        let queue = Queue::new()?;
+        let embeddings_handler = EmbeddingsHandler::new(
+            "jinaai/jina-embeddings-v2-base-en",
+            "main",
+        ).context("Failed to create embeddings processor")?;
+        
         let server_state = Arc::new(
-            ServerState::new(&queue)
+            ServerState::new(embeddings_handler)
                 .context("Failed to create server state")?
         );
         let embeddings_request = EmbeddingsRequest {
             input: Sentences::from(Vec::from(["sentence sentence sentence"; 5])),
             model: "whatever".to_string(),
-            encoding_format: Some(Float)
+            encoding_format: Some(Float),
+            dimensions: None,
+            user: None
         }; 
 
         let start = Instant::now();

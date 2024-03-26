@@ -7,18 +7,29 @@ use axum::extract::MatchedPath;
 use tracing::{info_span, Span};
 use tower_http::timeout::TimeoutLayer;
 use std::time::Duration;
+use clap::Args;
 use thiserror::__private::AsDisplay;
 
-use crate::infer::embed::EmbeddingsProcessor;
-use crate::infer::Queue;
-use crate::server::data_models::{EmbeddingsRequest, EmbeddingsResponse};
+use crate::infer::embed::EmbeddingsHandler;
 use crate::server::routes::{default, embeddings};
 use crate::server::state::ServerState;
 
-pub fn init_router() -> anyhow::Result<Router> {
-    let embed_queue: Queue<EmbeddingsRequest, EmbeddingsResponse, EmbeddingsProcessor> = Queue::new()?;
+#[derive(Debug, Args)]
+pub struct RouterArgs {
+    #[clap(short, long, default_value = "jinaai/jina-embeddings-v2-base-en")]
+    pub model_repo: String,
     
-    let state = Arc::new(ServerState::new(&embed_queue)?);
+    #[clap(short, long, default_value = "main")]
+    pub revision: String,
+}
+
+pub fn init_router(args: &RouterArgs) -> anyhow::Result<Router> {
+    let embeddings_handler = EmbeddingsHandler::new(
+        &args.model_repo,
+        &args.revision,
+    )?;
+    
+    let state = Arc::new(ServerState::new(embeddings_handler)?);
 
     let router = Router::new()
         .route("/v1/embeddings", post(embeddings::infer_text_embeddings))
@@ -28,7 +39,6 @@ pub fn init_router() -> anyhow::Result<Router> {
             TraceLayer::new_for_http()
                 .make_span_with(|request: &Request<_>| {
                     // Log the matched route's path (with placeholders not filled in).
-                    // Use request.uri() or OriginalUri if you want the real path.
                     let matched_path = request
                         .extensions()
                         .get::<MatchedPath>()

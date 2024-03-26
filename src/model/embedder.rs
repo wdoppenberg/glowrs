@@ -147,7 +147,7 @@ mod tests {
             RepoType::Model,
             revision.into(),
         ));
-        let (_model, _tokenizer) = load_model_and_tokenizer::<BertModel>(api).unwrap();
+        let (_model, _tokenizer): (BertModel, _) = load_model_and_tokenizer(api).unwrap();
     }
 
     #[test]
@@ -156,6 +156,6 @@ mod tests {
         let api = Api::new()
             .unwrap()
             .repo(Repo::new(repo_name.into(), RepoType::Model));
-        let (_model, _tokenizer) = load_model_and_tokenizer::<JinaBertModel>(api).unwrap();
+        let (_model, _tokenizer): (JinaBertModel, _) = load_model_and_tokenizer(api).unwrap();
     }
 }

@@ -8,7 +8,7 @@
 > An experimental Rust web server for embedding sentences
 
 An all-Rust web server for sentence embedding inference. Uses
-[`candle`](https://github.com/huggingface/candle) as DL framework. Currently runs `jina-embeddings-v2-base-en` but 
+[`candle`](https://github.com/huggingface/candle) as DL framework. Currently runs `jina-embeddings-v2-*` models but 
 it will support other sentence embedders later.
 
 ## Features
@@ -16,8 +16,9 @@ it will support other sentence embedders later.
 - [X] OpenAI API compatible (`/v1/embeddings`) REST API endpoint
 - [X] `candle` inference with Jina AI embeddings
 - [X] Hardware acceleration (Metal for now)
-- [ ] Queueing
+- [X] Queueing
 - [ ] Multiple models 
+- [ ] Performance metrics
 
 ## Usage
 
