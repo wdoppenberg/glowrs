@@ -7,18 +7,18 @@ use crate::infer::queue::QueueCommand;
 
 pub(crate) trait Client {
     /// Type to send over channel / interface
-    type SendType: Send + Sync + 'static;
+    type TSend: Send + Sync + 'static;
 
     /// Type to receive over channel / interface
-    type RecvType: Send + Sync + 'static;
+    type TRecv: Send + Sync + 'static;
 
 	#[allow(async_fn_in_trait)]
     async fn send(
-        &self,
-        value: Self::SendType,
-    ) -> Result<oneshot::Receiver<Self::RecvType>>;
+		&self,
+		value: Self::TSend,
+    ) -> Result<oneshot::Receiver<Self::TRecv>>;
 
 	// TODO: Get rid of this
-	fn get_tx(&self) -> UnboundedSender<QueueCommand<Self::SendType, Self::RecvType>>;
+	fn get_tx(&self) -> UnboundedSender<QueueCommand<Self::TSend, Self::TRecv>>;
 }
 

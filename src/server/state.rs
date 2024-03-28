@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use anyhow::Result;
 use crate::infer::embed::EmbeddingsHandler;
 
@@ -9,7 +10,8 @@ use crate::infer::embed::EmbeddingsClient;
 #[derive(Clone)]
 pub struct ServerState {
     pub embeddings_client: EmbeddingsClient,
-    // pub embeddings_queue: Queue<EmbeddingsRequest, EmbeddingsResponse, EmbeddingsHandler>,
+    // TODO: Fix queue + handler thread despawning 
+    pub embeddings_queue: Arc<Queue<EmbeddingsHandler>>,
 }
 
 impl ServerState {
@@ -17,9 +19,9 @@ impl ServerState {
         embeddings_handler: EmbeddingsHandler,
     ) -> Result<Self> {
         let embeddings_queue = Queue::new(embeddings_handler)?;
-        
+
         let embeddings_client = EmbeddingsClient::new(&embeddings_queue);
 
-        Ok(Self { embeddings_client })
+        Ok(Self { embeddings_client, embeddings_queue: Arc::new(embeddings_queue) })
     }
 }

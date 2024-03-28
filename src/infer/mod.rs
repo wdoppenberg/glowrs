@@ -1,6 +1,7 @@
 pub mod queue;
 mod client;
 pub mod embed;
+mod handler;
 
 pub use queue::Queue;
 use uuid::Uuid;

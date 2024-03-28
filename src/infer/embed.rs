@@ -3,8 +3,9 @@ use tokio::sync::oneshot;
 use candle_transformers::models::jina_bert::BertModel as JinaBertModel;
 
 use crate::infer::client::Client;
+use crate::infer::handler::RequestHandler;
 use crate::infer::Queue;
-use crate::infer::queue::{QueueCommand, QueueEntry, RequestHandler};
+use crate::infer::queue::{QueueCommand, QueueEntry};
 use crate::model::sentence_transformer::SentenceTransformer;
 use crate::server::data_models::{EmbeddingsRequest, EmbeddingsResponse};
 
@@ -16,13 +17,13 @@ pub struct EmbeddingsClient {
 }
 
 impl Client for EmbeddingsClient {
-    type SendType = EmbeddingsRequest;
-    type RecvType = EmbeddingsResponse;
+    type TSend = EmbeddingsRequest;
+    type TRecv = EmbeddingsResponse;
 
     async fn send(
-        &self,
-        value: Self::SendType,
-    ) -> anyhow::Result<oneshot::Receiver<Self::RecvType>> {
+	    &self,
+	    value: Self::TSend,
+    ) -> anyhow::Result<oneshot::Receiver<Self::TRecv>> {
         let (queue_tx, queue_rx) = oneshot::channel();
         let entry = QueueEntry::new(value, queue_tx);
 	    let command = QueueCommand::Append(entry);
@@ -31,13 +32,13 @@ impl Client for EmbeddingsClient {
 	    Ok(queue_rx)
     }
 
-	fn get_tx(&self) -> UnboundedSender<QueueCommand<Self::SendType, Self::RecvType>> {
+	fn get_tx(&self) -> UnboundedSender<QueueCommand<Self::TSend, Self::TRecv>> {
 		self.tx.clone()
 	}
 }
 
 impl EmbeddingsClient {
-	pub(crate) fn new(queue: &Queue<EmbeddingsRequest, EmbeddingsResponse, EmbeddingsHandler>) -> Self {
+	pub(crate) fn new(queue: &Queue<EmbeddingsHandler>) -> Self {
 		Self {
 			tx: queue.tx.clone()
 		}
@@ -49,6 +50,7 @@ impl EmbeddingsClient {
 }
 
 type Embedder = JinaBertModel;
+
 
 pub struct EmbeddingsHandler {
     sentence_transformer: SentenceTransformer<Embedder>,
@@ -72,8 +74,12 @@ impl EmbeddingsHandler {
     }
 }
 
-impl RequestHandler<EmbeddingsRequest, EmbeddingsResponse> for EmbeddingsHandler {
-    fn handle(&mut self, request: EmbeddingsRequest) -> anyhow::Result<EmbeddingsResponse> {
+impl RequestHandler for EmbeddingsHandler {
+	type TReq = EmbeddingsRequest;
+	type TResp = EmbeddingsResponse;
+
+
+	fn handle(&mut self, request: EmbeddingsRequest) -> anyhow::Result<EmbeddingsResponse> {
         let sentences = request.input;
 
 	    // TODO: Is this even necessary?
