@@ -68,13 +68,13 @@ where
     THandler: RequestHandler
 {
     pub(crate) fn new(processor: THandler) -> Result<Self> {
-        
+
         // TODO: Replace with MPMC w/ more worker threads (if CPU)
         // Create channel
         let (queue_tx, queue_rx) = unbounded_channel();
-        
+
         let _join_handle = std::thread::spawn(move || {
-            
+
             // Create a new Runtime to run tasks
             let runtime = tokio::runtime::Builder::new_multi_thread()
                 .enable_all()
@@ -112,10 +112,10 @@ where
                     entry.id,
                     entry.queue_time.elapsed().as_millis()
                 );
-                
-                // Process the task 
+
+                // Process the task
                 let response = processor.handle(entry.request)?;
-                
+
                 if entry.response_tx.send(response).is_ok() {
                     tracing::trace!("Successfully sent response for task {}", entry.id)
                 } else {

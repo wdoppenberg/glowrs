@@ -1,60 +1,17 @@
-use tokio::sync::mpsc::UnboundedSender;
-use tokio::sync::oneshot;
 use candle_transformers::models::jina_bert::BertModel as JinaBertModel;
 
 use crate::infer::client::Client;
 use crate::infer::handler::RequestHandler;
 use crate::infer::Queue;
-use crate::infer::queue::{QueueCommand, QueueEntry};
 use crate::model::sentence_transformer::SentenceTransformer;
 use crate::server::data_models::{EmbeddingsRequest, EmbeddingsResponse};
 
-/// Embeddings inference struct
-#[derive(Clone)]
-pub struct EmbeddingsClient {
-    /// Queue sender
-    tx: UnboundedSender<QueueCommand<EmbeddingsRequest, EmbeddingsResponse>>,
-}
-
-impl Client for EmbeddingsClient {
-    type TSend = EmbeddingsRequest;
-    type TRecv = EmbeddingsResponse;
-
-    async fn send(
-	    &self,
-	    value: Self::TSend,
-    ) -> anyhow::Result<oneshot::Receiver<Self::TRecv>> {
-        let (queue_tx, queue_rx) = oneshot::channel();
-        let entry = QueueEntry::new(value, queue_tx);
-	    let command = QueueCommand::Append(entry);
-        self.tx.send(command)?;
-
-	    Ok(queue_rx)
-    }
-
-	fn get_tx(&self) -> UnboundedSender<QueueCommand<Self::TSend, Self::TRecv>> {
-		self.tx.clone()
-	}
-}
-
-impl EmbeddingsClient {
-	pub(crate) fn new(queue: &Queue<EmbeddingsHandler>) -> Self {
-		Self {
-			tx: queue.tx.clone()
-		}
-	}
-	pub async fn generate_embedding(&self, request: EmbeddingsRequest) -> anyhow::Result<EmbeddingsResponse> {
-    	let rx = self.send(request).await?;
-    	rx.await.map_err(|_| anyhow::anyhow!("Failed to receive response from queue"))
-	}
-}
-
 type Embedder = JinaBertModel;
-
 
 pub struct EmbeddingsHandler {
     sentence_transformer: SentenceTransformer<Embedder>,
 }
+
 
 impl EmbeddingsHandler {
 	pub fn new(
@@ -62,7 +19,6 @@ impl EmbeddingsHandler {
 		revision: &str,
 	) -> anyhow::Result<Self>
     {
-	    // TODO: Don't hardcode
         tracing::info!("Loading model: {}. Wait for model load.", model_repo);
         let sentence_transformer: SentenceTransformer<Embedder> =
             SentenceTransformer::from_repo(model_repo, revision)?;
@@ -94,4 +50,19 @@ impl RequestHandler for EmbeddingsHandler {
 
         Ok(response)
     }
+}
+
+/// Embeddings inference struct
+#[derive(Clone)]
+pub struct EmbeddingsClient(Client<EmbeddingsHandler>);
+
+
+impl EmbeddingsClient {
+	pub(crate) fn new(queue: &Queue<EmbeddingsHandler>) -> Self {
+		Self(Client::new(queue))
+	}
+	pub async fn generate_embedding(&self, request: EmbeddingsRequest) -> anyhow::Result<EmbeddingsResponse> {
+		let rx = self.0.send(request).await?;
+		rx.await.map_err(|_| anyhow::anyhow!("Failed to receive response from queue"))
+	}
 }

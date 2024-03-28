@@ -10,9 +10,10 @@ use crate::infer::embed::EmbeddingsClient;
 #[derive(Clone)]
 pub struct ServerState {
     pub embeddings_client: EmbeddingsClient,
-    // TODO: Fix queue + handler thread despawning 
+    // TODO: Fix queue + handler thread despawning
     pub embeddings_queue: Arc<Queue<EmbeddingsHandler>>,
 }
+
 
 impl ServerState {
     pub fn new(
