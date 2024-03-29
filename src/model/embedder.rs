@@ -63,7 +63,7 @@ where
         .context("Model repository doesn't contain `tokenizer.json`.")?;
 
     let config_str = std::fs::read_to_string(config_path)?;
-    let cfg: E::Config = serde_json::from_str(&config_str)
+    let cfg = serde_json::from_str(&config_str)
 		.context(
 			"Failed to deserialize config.json. Make sure you have the right EmbedderModel implementation."
 		)?;
