@@ -65,6 +65,10 @@ print(client.embeddings.create(
 print(f"Done in {time() - start}")
 ```
 
+## Details
+
+* Use `TOKIO_WORKER_THREADS` to set the number of threads _per queue_.
+
 ## Disclaimer
 
 This is still a work-in-progress. The embedding performance is decent but can probably do with some
