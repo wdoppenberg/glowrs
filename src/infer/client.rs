@@ -24,6 +24,7 @@ where THandler: RequestHandler
 			_phantom: PhantomData
 		}
 	}
+	
 	pub(crate) async fn send(
 		&self,
 		value: THandler::TReq,

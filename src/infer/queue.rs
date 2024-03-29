@@ -1,5 +1,7 @@
 use anyhow::Result;
 use std::marker::PhantomData;
+use std::sync::{Arc, Mutex};
+use std::thread::JoinHandle;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 use tokio::sync::oneshot;
 use tokio::time::Instant;
@@ -53,6 +55,18 @@ where
     Stop,
 }
 
+#[derive(Clone)]
+struct CloneableJoinHandle<T: Clone>(Arc<Mutex<JoinHandle<T>>>);
+
+impl<T> CloneableJoinHandle<T>
+where T: Clone
+{
+    #[allow(dead_code)]
+    fn new(handle: JoinHandle<T>) -> Self {
+        Self(Arc::new(Mutex::new(handle)))
+    }
+}
+
 /// Request Queue with stateful task processor
 #[derive(Clone)]
 pub struct Queue<THandler>
@@ -60,6 +74,7 @@ where
     THandler: RequestHandler,
 {
     pub(crate) tx: UnboundedSender<QueueCommand<THandler::TReq, THandler::TResp>>,
+    // _handle: CloneableJoinHandle<Result<()>>,
     _processor: PhantomData<THandler>,
 }
 
@@ -69,7 +84,6 @@ where
 {
     pub(crate) fn new(processor: THandler) -> Result<Self> {
 
-        // TODO: Replace with MPMC w/ more worker threads (if CPU)
         // Create channel
         let (queue_tx, queue_rx) = unbounded_channel();
 
@@ -79,8 +93,6 @@ where
             let runtime = tokio::runtime::Builder::new_multi_thread()
                 .enable_all()
                 .thread_name(format!("queue-{}", Uuid::new_v4()))
-                // TODO: Make configurable
-                .worker_threads(2)
                 .build()?;
 
             // Pull task requests off the channel and send them to the executor
@@ -89,6 +101,7 @@ where
 
         Ok(Self {
             tx: queue_tx,
+            // _handle: CloneableJoinHandle::new(_join_handle),
             _processor: PhantomData,
         })
     }
