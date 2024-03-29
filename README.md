@@ -8,8 +8,36 @@
 > An experimental Rust web server for embedding sentences
 
 An all-Rust web server for sentence embedding inference. Uses
-[`candle`](https://github.com/huggingface/candle) as DL framework. Currently runs `jina-embeddings-v2-*` models but 
-it will support other sentence embedders later.
+[`candle`](https://github.com/huggingface/candle) as DL framework. Currently runs Bert type models hosted on Huggingface, such as those provided by 
+[`sentence-transformers`](https://huggingface.co/sentence-transformers), 
+[`Tom Aarsen`](https://huggingface.co/tomaarsen), as long as they provide safetensors model weights. JinaBert models
+are also supported, but (currently) require the `jina` feature to be given during compilation. 
+
+## Usage
+
+Example usage with default repo & revision (`jinaai/jina-embeddings-v2-base-en`):
+
+```bash
+cargo run --bin server --release -F jina 
+```
+
+### Instructions:
+
+```shell
+Usage: server [OPTIONS]
+
+Options:
+  -m, --model-repo <MODEL_REPO>  [default: jinaai/jina-embeddings-v2-base-en]
+  -r, --revision <REVISION>      [default: main]
+  -h, --help                     Print help
+```
+
+### Build features
+
+* `metal`: Compile with Metal acceleration
+* `cuda`: Compile with CUDA acceleration
+* `accelerate`: Compile with Accelerate framework acceleration (CPU)
+* `jina`: Compile with support for Jina Bert models.
 
 ## Features
 
@@ -17,14 +45,10 @@ it will support other sentence embedders later.
 - [X] `candle` inference with Jina AI embeddings
 - [X] Hardware acceleration (Metal for now)
 - [X] Queueing
+- [ ] Batching
 - [ ] Multiple models 
 - [ ] Performance metrics
 
-## Usage
-
-```bash
-cargo run --bin server --release
-```
 
 ### `curl`
 ```shell
