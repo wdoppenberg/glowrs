@@ -14,18 +14,31 @@ pub use candle_transformers::models::{bert::BertModel, jina_bert::BertModel as J
 use crate::server::data_models::{Sentences, Usage};
 use crate::utils::{normalize_l2, device::DEVICE};
 
-pub trait EmbedderModel: Sized {
+
+pub trait LoadableModel: Sized {
     type Config: DeserializeOwned;
-    fn load_model(vb: VarBuilder, cfg: &Self::Config) -> Result<Self>;
+    fn load_model(vb: VarBuilder, cfg: &Self::Config) -> Result<Box<dyn EmbedderModel>>;
+}
+
+pub trait EmbedderModel: Send + Sync {
     fn inner_forward(&self, token_ids: &Tensor) -> Result<Tensor>;
 }
 
-impl EmbedderModel for BertModel {
+impl LoadableModel for BertModel {
     type Config = BertConfig;
-
-    fn load_model(vb: VarBuilder, cfg: &Self::Config) -> Result<Self> {
-        Ok(Self::load(vb, cfg)?)
+    fn load_model(vb: VarBuilder, cfg: &Self::Config) -> Result<Box<dyn EmbedderModel>> {
+        Ok(Box::new(Self::load(vb, cfg)?))
     }
+}
+
+impl LoadableModel for JinaBertModel {
+    type Config = JinaBertConfig;
+    fn load_model(vb: VarBuilder, cfg: &Self::Config) -> Result<Box<dyn EmbedderModel>> {
+        Ok(Box::new(Self::new(vb, cfg)?))
+    }
+}
+
+impl EmbedderModel for BertModel {
 
     #[inline]
     fn inner_forward(&self, token_ids: &Tensor) -> Result<Tensor> {
@@ -35,10 +48,6 @@ impl EmbedderModel for BertModel {
 }
 
 impl EmbedderModel for JinaBertModel {
-    type Config = JinaBertConfig;
-    fn load_model(vb: VarBuilder, cfg: &Self::Config) -> Result<Self> {
-        Ok(Self::new(vb, cfg)?)
-    }
 
     #[inline]
     fn inner_forward(&self, token_ids: &Tensor) -> Result<Tensor> {
@@ -46,9 +55,9 @@ impl EmbedderModel for JinaBertModel {
     }
 }
 
-pub(crate) fn load_model_and_tokenizer<E>(api: ApiRepo) -> Result<(E, Tokenizer)>
+pub(crate) fn load_model_and_tokenizer_gen<L>(api: ApiRepo) -> Result<(Box<dyn EmbedderModel>, Tokenizer)>
 where
-    E: EmbedderModel, // Model
+    L: LoadableModel,
 {
     let model_path = api
         .get("model.safetensors")
@@ -62,22 +71,37 @@ where
         .get("tokenizer.json")
         .context("Model repository doesn't contain `tokenizer.json`.")?;
 
+    let tokenizer = Tokenizer::from_file(tokenizer_path).map_err(Error::msg)?;
     let config_str = std::fs::read_to_string(config_path)?;
+    
     let cfg = serde_json::from_str(&config_str)
 		.context(
 			"Failed to deserialize config.json. Make sure you have the right EmbedderModel implementation."
 		)?;
-    let tokenizer = Tokenizer::from_file(tokenizer_path).map_err(Error::msg)?;
 
     let vb = unsafe { VarBuilder::from_mmaped_safetensors(&[model_path], DType::F32, &DEVICE)? };
 
-    let model = E::load_model(vb, &cfg).context("Something went wrong while loading the model.")?;
+    let model = L::load_model(vb, &cfg).context("Something went wrong while loading the model.")?;
 
     Ok((model, tokenizer))
 }
 
-pub(crate) fn encode_batch_with_usage<E: EmbedderModel>(
-    model: &E,
+pub enum EmbedderType {
+    Bert,
+    JinaBert,
+}
+
+pub(crate) fn load_model_and_tokenizer(api: ApiRepo, embedder_type: EmbedderType) -> Result<(Box<dyn EmbedderModel>, Tokenizer)> {
+    let (model, tokenizer) = match embedder_type {
+        EmbedderType::Bert => load_model_and_tokenizer_gen::<BertModel>(api)?,
+        EmbedderType::JinaBert => load_model_and_tokenizer_gen::<JinaBertModel>(api)?,
+    };
+    Ok((model, tokenizer))
+}
+
+
+pub(crate) fn encode_batch_with_usage(
+    model: &dyn EmbedderModel,
     tokenizer: &Tokenizer,
     sentences: impl Into<Vec<String>>,
     normalize: bool,
@@ -120,8 +144,8 @@ pub(crate) fn encode_batch_with_usage<E: EmbedderModel>(
     Ok((embeddings, usage))
 }
 
-pub(crate) fn encode_batch<E: EmbedderModel>(
-    model: &E,
+pub(crate) fn encode_batch(
+    model: &dyn EmbedderModel,
     tokenizer: &Tokenizer,
     sentences: Sentences,
     normalize: bool,
@@ -147,7 +171,7 @@ mod tests {
             RepoType::Model,
             revision.into(),
         ));
-        let (_model, _tokenizer): (BertModel, _) = load_model_and_tokenizer(api).unwrap();
+        let (_model, _tokenizer) = load_model_and_tokenizer_gen::<BertModel>(api).unwrap();
     }
 
     #[test]
@@ -156,6 +180,6 @@ mod tests {
         let api = Api::new()
             .unwrap()
             .repo(Repo::new(repo_name.into(), RepoType::Model));
-        let (_model, _tokenizer): (JinaBertModel, _) = load_model_and_tokenizer(api).unwrap();
+        let (_model, _tokenizer) = load_model_and_tokenizer_gen::<JinaBertModel>(api).unwrap();
     }
 }

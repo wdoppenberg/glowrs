@@ -1,70 +1,18 @@
 use anyhow::Result;
-use std::marker::PhantomData;
-use std::sync::{Arc, Mutex};
-use std::thread::JoinHandle;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
-use tokio::sync::oneshot;
-use tokio::time::Instant;
 use uuid::Uuid;
+
+use crate::infer::batch::QueueEntry;
 use crate::infer::handler::RequestHandler;
 
-use super::TaskId;
-
-/// Queue entry
-#[derive(Debug)]
-pub(crate) struct QueueEntry<TReq, TResp>
-where
-    TReq: Send + Sync + 'static,
-    TResp: Send + Sync + 'static,
-{
-    /// Identifier
-    pub id: TaskId,
-
-    /// Request
-    pub request: TReq,
-
-    /// Response sender
-    pub response_tx: oneshot::Sender<TResp>,
-
-    /// Instant when this entry was queued
-    pub queue_time: Instant,
-}
-
-
-/// Queue entry
-impl<TReq, TResp> QueueEntry<TReq, TResp> where TReq: Send + Sync + 'static, TResp: Send + Sync + 'static {
-    pub fn new(request: TReq, response_tx: oneshot::Sender<TResp>) -> Self {
-        Self {
-            id: Uuid::new_v4(),
-            request,
-            response_tx,
-            queue_time: Instant::now(),
-        }
-    }
-}
-
 /// Queue command
-#[derive(Debug)]
-// TODO: Use stop command
 #[allow(dead_code)]
-pub(crate) enum QueueCommand<TReq, TResp>
+pub(crate) enum QueueCommand<THandler>
 where
-    TReq: Send, TReq: Send + Sync + 'static, TResp: Send + Sync + 'static
+    THandler: RequestHandler
 {
-    Append(QueueEntry<TReq, TResp>),
+    Append(QueueEntry<THandler>),
     Stop,
-}
-
-#[derive(Clone)]
-struct CloneableJoinHandle<T: Clone>(Arc<Mutex<JoinHandle<T>>>);
-
-impl<T> CloneableJoinHandle<T>
-where T: Clone
-{
-    #[allow(dead_code)]
-    fn new(handle: JoinHandle<T>) -> Self {
-        Self(Arc::new(Mutex::new(handle)))
-    }
 }
 
 /// Request Queue with stateful task processor
@@ -73,9 +21,7 @@ pub struct Queue<THandler>
 where
     THandler: RequestHandler,
 {
-    pub(crate) tx: UnboundedSender<QueueCommand<THandler::TReq, THandler::TResp>>,
-    // _handle: CloneableJoinHandle<Result<()>>,
-    _processor: PhantomData<THandler>,
+    pub(crate) tx: UnboundedSender<QueueCommand<THandler>>,
 }
 
 impl<THandler> Queue<THandler>
@@ -102,14 +48,13 @@ where
         Ok(Self {
             tx: queue_tx,
             // _handle: CloneableJoinHandle::new(_join_handle),
-            _processor: PhantomData,
         })
     }
 }
 
 // Generic background task executor with stateful processor
 async fn queue_task<THandler>(
-    mut receiver: UnboundedReceiver<QueueCommand<THandler::TReq, THandler::TResp>>,
+    mut receiver: UnboundedReceiver<QueueCommand<THandler>>,
     mut processor: THandler,
 ) -> Result<()>
 where
@@ -147,6 +92,7 @@ where
 
 #[cfg(test)]
 mod tests {
+    use tokio::sync::oneshot;
     use super::*;
     
     #[derive(Debug, PartialEq)]

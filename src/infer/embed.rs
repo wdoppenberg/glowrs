@@ -1,17 +1,12 @@
 use crate::infer::client::Client;
 use crate::infer::handler::RequestHandler;
 use crate::infer::Queue;
+use crate::model::embedder::EmbedderType;
 use crate::model::sentence_transformer::SentenceTransformer;
 use crate::server::data_models::{EmbeddingsRequest, EmbeddingsResponse};
 
-#[cfg(feature = "jina")]
-type Embedder = candle_transformers::models::jina_bert::BertModel;
-
-#[cfg(not(feature = "jina"))]
-type Embedder = candle_transformers::models::bert::BertModel;
-
 pub struct EmbeddingsHandler {
-    sentence_transformer: SentenceTransformer<Embedder>,
+    sentence_transformer: SentenceTransformer,
 }
 
 
@@ -23,15 +18,16 @@ impl EmbeddingsHandler {
     {
         tracing::info!("Loading model: {}. Wait for model load.", model_repo);
 	    
-	    #[cfg(not(feature = "jina"))]
-	    {
+	    let embedder_type = {
 		    if model_repo.contains("jina") {
-			    tracing::warn!("Model repo contains `jina`, did you mean to run with `--feature jina`?")
+			    EmbedderType::JinaBert
+		    } else {
+			    EmbedderType::Bert
 		    }
-	    }
+	    };
 	    
-        let sentence_transformer: SentenceTransformer<Embedder> =
-            SentenceTransformer::from_repo(model_repo, revision)?;
+        let sentence_transformer: SentenceTransformer =
+            SentenceTransformer::from_repo(model_repo, revision, embedder_type)?;
         tracing::info!("Model loaded");
 
         Ok(Self {
