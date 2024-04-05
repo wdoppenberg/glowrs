@@ -16,7 +16,7 @@ use crate::server::state::ServerState;
 
 #[derive(Debug, Args)]
 pub struct RouterArgs {
-    #[clap(short, long, default_value = "jinaai/jina-embeddings-v2-base-en")]
+    #[clap(short, long)]
     pub model_repo: String,
     
     #[clap(short, long, default_value = "main")]
