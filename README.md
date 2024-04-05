@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🚧`glowrs`🚧
+# `glowrs`
 
 </div>
 
@@ -10,15 +10,14 @@
 An all-Rust web server for sentence embedding inference. Uses
 [`candle`](https://github.com/huggingface/candle) as DL framework. Currently runs Bert type models hosted on Huggingface, such as those provided by 
 [`sentence-transformers`](https://huggingface.co/sentence-transformers), 
-[`Tom Aarsen`](https://huggingface.co/tomaarsen), as long as they provide safetensors model weights. JinaBert models
-are also supported, but (currently) require the `jina` feature to be given during compilation. 
+[`Tom Aarsen`](https://huggingface.co/tomaarsen), or [`Jina AI`](https://huggingface.co/jinaai), as long as they provide safetensors model weights.
 
 ## Usage
 
-Example usage with default repo & revision (`jinaai/jina-embeddings-v2-base-en`):
+Example usage with the `jina-embeddings-v2-base-en` model:
 
 ```bash
-cargo run --bin server --release -F jina 
+cargo run --bin server --release -- --model-repo jinaai/jina-embeddings-v2-base-en
 ```
 
 ### Instructions:
@@ -27,7 +26,7 @@ cargo run --bin server --release -F jina
 Usage: server [OPTIONS]
 
 Options:
-  -m, --model-repo <MODEL_REPO>  [default: jinaai/jina-embeddings-v2-base-en]
+  -m, --model-repo <MODEL_REPO>  
   -r, --revision <REVISION>      [default: main]
   -h, --help                     Print help
 ```
@@ -37,12 +36,11 @@ Options:
 * `metal`: Compile with Metal acceleration
 * `cuda`: Compile with CUDA acceleration
 * `accelerate`: Compile with Accelerate framework acceleration (CPU)
-* `jina`: Compile with support for Jina Bert models.
 
 ## Features
 
 - [X] OpenAI API compatible (`/v1/embeddings`) REST API endpoint
-- [X] `candle` inference with Jina AI embeddings
+- [X] `candle` inference for bert and jina-bert models
 - [X] Hardware acceleration (Metal for now)
 - [X] Queueing
 - [ ] Batching
@@ -59,7 +57,6 @@ curl -X POST http://localhost:3000/v1/embeddings \
     "model": "jina-embeddings-v2-base-en",
     "encoding_format": "float"
   }'
-
 ```
 
 
