@@ -25,7 +25,7 @@ impl SentenceTransformer
 	pub fn from_repo(repo_name: impl Into<String>, revision: impl Into<String>, embedder_type: EmbedderType) -> Result<Self> {
 		let api = Api::new()?
 			.repo(Repo::with_revision(repo_name.into(), RepoType::Model, revision.into()));
-		
+
 		let (model, tokenizer) = load_model_and_tokenizer(api, embedder_type)?;
 		Ok(Self::new(model, tokenizer))
 	}
@@ -36,7 +36,7 @@ impl SentenceTransformer
 		normalize: bool,
 	) -> Result<(Tensor, Usage)> {
 		let (embeddings, usage) = encode_batch_with_usage(
-			&self.model,
+			self.model.as_ref(),
 			&self.tokenizer,
 			sentences,
 			normalize
@@ -46,7 +46,7 @@ impl SentenceTransformer
 
 	pub fn encode_batch(&self, sentences: Sentences, normalize: bool) -> Result<Tensor> {
 		encode_batch(
-			&self.model,
+			self.model.as_ref(),
 			&self.tokenizer,
 			sentences,
 			normalize

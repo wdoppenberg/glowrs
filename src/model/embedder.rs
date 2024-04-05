@@ -101,7 +101,7 @@ pub(crate) fn load_model_and_tokenizer(api: ApiRepo, embedder_type: EmbedderType
 
 
 pub(crate) fn encode_batch_with_usage(
-    model: &Box<dyn EmbedderModel>,
+    model: &dyn EmbedderModel,
     tokenizer: &Tokenizer,
     sentences: impl Into<Vec<String>>,
     normalize: bool,
@@ -145,7 +145,7 @@ pub(crate) fn encode_batch_with_usage(
 }
 
 pub(crate) fn encode_batch(
-    model: &Box<dyn EmbedderModel>,
+    model: &dyn EmbedderModel,
     tokenizer: &Tokenizer,
     sentences: Sentences,
     normalize: bool,
