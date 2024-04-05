@@ -1,5 +1,7 @@
 use anyhow::Result;
 use tokio::signal;
+use std::result;
+use std::ops::RangeInclusive;
 
 type Nullary = fn() -> Result<()>;
 
@@ -30,5 +32,22 @@ pub async fn shutdown_signal(shutdown_fns_opt: Option<&[Nullary]>) {
     tokio::select! {
         _ = ctrl_c => {},
         _ = terminate => {},
+    }
+}
+
+const PORT_RANGE: RangeInclusive<u16> = 1..=65535;
+
+pub fn port_in_range(s: &str) -> result::Result<u16, String> {
+    let port: u16 = s
+        .parse()
+        .map_err(|_| format!("`{s}` isn't a port number"))?;
+    if PORT_RANGE.contains(&port) {
+        Ok(port)
+    } else {
+        Err(format!(
+            "port not in range {}-{}",
+            PORT_RANGE.start(),
+            PORT_RANGE.end()
+        ))
     }
 }

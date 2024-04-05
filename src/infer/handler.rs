@@ -70,7 +70,7 @@ mod test {
     use super::*;
     use crate::infer::client::Client;
     use crate::infer::Queue;
-    use crate::utils::device::DEVICE;
+    use crate::model::device::DEVICE;
 
     fn append_str(s_in: String) -> String {
         format!("{}-processed", s_in)

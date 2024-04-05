@@ -10,9 +10,10 @@ use tokenizers::Tokenizer;
 
 // Re-exports
 pub use candle_transformers::models::{bert::BertModel, jina_bert::BertModel as JinaBertModel};
+use crate::model::utils::normalize_l2;
 
 use crate::server::data_models::{Sentences, Usage};
-use crate::utils::{normalize_l2, device::DEVICE};
+use crate::model::device::DEVICE;
 
 
 pub trait LoadableModel: Sized {

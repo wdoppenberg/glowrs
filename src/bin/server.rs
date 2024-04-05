@@ -5,10 +5,10 @@ use clap::Parser;
 use tokio::net::TcpListener;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-use glowrs::utils::{device::print_device_info, port_in_range};
+use glowrs::model::device::print_device_info;
 use glowrs::server::utils;
 use glowrs::server::{init_router, RouterArgs};
-
+use glowrs::server::utils::port_in_range;
 
 
 #[derive(Debug, Parser)]

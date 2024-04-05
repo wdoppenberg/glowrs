@@ -21,7 +21,7 @@ async def create_embeddings() -> CreateEmbeddingResponse:
 
 
 async def call_health() -> None:
-	# Call the /health endpoint 10k times
+	# Call the /health endpoint 100 times
 	async with AsyncClient() as client:
 		for _ in range(100):
 			response = await client.get("http://127.0.0.1:3000/health")
