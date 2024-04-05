@@ -40,7 +40,7 @@ mod tests {
             "jinaai/jina-embeddings-v2-base-en",
             "main",
         ).context("Failed to create embeddings processor")?;
-        
+
         let server_state = Arc::new(
             ServerState::new(embeddings_handler)
                 .context("Failed to create server state")?
@@ -51,7 +51,7 @@ mod tests {
             encoding_format: Some(Float),
             dimensions: None,
             user: None
-        }; 
+        };
 
         let start = Instant::now();
         const N_ITERS: usize = 2; 

@@ -1,18 +1,17 @@
-use std::marker::PhantomData;
 use anyhow::Result;
 use tokio::sync::oneshot;
 use tokio::sync::mpsc::UnboundedSender;
+use crate::infer::batch::QueueEntry;
 
 use crate::infer::handler::RequestHandler;
 use crate::infer::Queue;
-use crate::infer::queue::{QueueCommand, QueueEntry};
+use crate::infer::queue::QueueCommand;
 
 
 pub(crate) struct Client<THandler> 
 where THandler: RequestHandler
 {
-	tx: UnboundedSender<QueueCommand<THandler::TReq, THandler::TResp>>,
-	_phantom: PhantomData<THandler>
+	tx: UnboundedSender<QueueCommand<THandler>>,
 }
 
 impl<THandler> Client<THandler> 
@@ -21,7 +20,6 @@ where THandler: RequestHandler
 	pub(crate) fn new(queue: &Queue<THandler>) -> Self {
 		Self {
 			tx: queue.tx.clone(),
-			_phantom: PhantomData
 		}
 	}
 	
@@ -44,13 +42,12 @@ where THandler: RequestHandler
 	}
 }
 
-impl<THandler> Clone for Client<THandler> 
+impl<THandler> Clone for Client<THandler>
 where THandler: RequestHandler
 {
     fn clone(&self) -> Self {
         Client {
             tx: self.tx.clone(),
-            _phantom: PhantomData {},
         }
     }
 }
