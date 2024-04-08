@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use anyhow::Result;
-use crate::infer::embed::EmbeddingsHandler;
 
+use crate::infer::embed::EmbeddingsHandler;
 use crate::infer::Queue;
 use crate::infer::embed::EmbeddingsClient;
 

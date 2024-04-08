@@ -81,18 +81,18 @@ mod test {
 		]);
 
 		let model_load_duration = Instant::now() - start;
-		dbg!(format!(
+		println!(
 			"Model loaded in {}ms",
 			model_load_duration.as_millis()
-		));
+		);
 
 		let embeddings = sentence_transformer.encode_batch(sentences, true)?;
 
-		dbg!(format!("Pooled embeddings {:?}", embeddings.shape()));
-		dbg!(format!(
+		println!("Pooled embeddings {:?}", embeddings.shape());
+		println!(
 			"Inference done in {}ms",
 			(Instant::now() - start - model_load_duration).as_millis()
-		));
+		);
 
 		Ok(())
 	}

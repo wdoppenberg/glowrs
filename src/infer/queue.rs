@@ -47,7 +47,6 @@ where
 
         Ok(Self {
             tx: queue_tx,
-            // _handle: CloneableJoinHandle::new(_join_handle),
         })
     }
 }

@@ -20,14 +20,17 @@ impl EmbeddingsHandler {
 	    
 	    let embedder_type = {
 		    if model_repo.contains("jina") {
+			    tracing::info!("Using Jina Bert model");
 			    EmbedderType::JinaBert
 		    } else {
+			    tracing::info!("Using default Bert model");
 			    EmbedderType::Bert
 		    }
 	    };
 	    
-        let sentence_transformer: SentenceTransformer =
+        let sentence_transformer =
             SentenceTransformer::from_repo(model_repo, revision, embedder_type)?;
+	    
         tracing::info!("Model loaded");
 
         Ok(Self {
