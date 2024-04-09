@@ -12,7 +12,6 @@ use tracing::{info_span, Span};
 
 use crate::server::routes::models::get_model;
 use crate::server::routes::{default, embeddings, models::list_models};
-use crate::server::routes::models::get_model;
 use crate::server::state::ServerState;
 
 #[derive(Debug, Args)]
