@@ -7,7 +7,25 @@ use tokenizers::tokenizer::Tokenizer;
 use crate::server::data_models::{Sentences, Usage};
 use crate::model::embedder::{EmbedderModel, EmbedderType, encode_batch, encode_batch_with_usage, load_model_and_tokenizer};
 
-
+/// The SentenceTransformer struct is the main entry point for using pre-trained models for embeddings and sentence similarity.
+/// 
+/// ## Example
+/// 
+/// ```rust
+///  # use glowrs::SentenceTransformer;
+/// 
+///  let encoder = SentenceTransformer::from_repo_string("sentence-transformers/all-MiniLM-L6-v2").unwrap();
+/// 
+///  let sentences = vec![
+///     "Hello, how are you?",
+///     "Hey, how are you doing?"
+///  ];
+/// 
+///  let embeddings = encoder.encode_batch(sentences, true).unwrap();
+/// 
+///  println!("{:?}", embeddings);
+///  ```
+/// 
 pub struct SentenceTransformer
 {
 	name: String,
@@ -25,17 +43,34 @@ impl SentenceTransformer
 		}
 	}
 
+	/// Load a SentenceTransformer model from the Hugging Face Hub.
+	/// 
+	/// ## Example
+	/// 
+	/// ```rust
+	/// # use glowrs::SentenceTransformer;
+	/// 
+	/// # fn main() -> anyhow::Result<()> {
+	/// let encoder = SentenceTransformer::from_repo_string("sentence-transformers/all-MiniLM-L6-v2")?;
+	/// 
+	/// # Ok(())
+	/// # }
+	/// ```
+	/// 
+	/// If you want to use a specific revision of the model, you can specify it in the repo string:
+	/// 
+	/// 
+	pub fn from_repo_string(repo_string: &str) -> Result<Self> {
+		let (model_repo, default_revision, embedder_type) = parse_repo_string(repo_string)?;
+		Self::from_repo(model_repo, default_revision, embedder_type)
+	}
+	
 	pub fn from_repo(repo_name: &str, revision: &str, embedder_type: EmbedderType) -> Result<Self> {
 		let api = Api::new()?
 			.repo(Repo::with_revision(repo_name.into(), RepoType::Model, revision.into()));
 
 		let (model, tokenizer) = load_model_and_tokenizer(api, embedder_type)?;
 		Ok(Self::new(repo_name.into(), model, tokenizer))
-	}
-	
-	pub fn from_repo_string(repo_string: &str) -> Result<Self> {
-		let (model_repo, default_revision, embedder_type) = parse_repo_string(repo_string)?;
-		Self::from_repo(model_repo, default_revision, embedder_type)
 	}
 
 	pub fn encode_batch_with_usage(
@@ -82,7 +117,13 @@ fn parse_repo_string(repo_string: &str) -> Result<(&str, &str, EmbedderType)> {
 	// Split the repo string by colon
 	let parts: Vec<&str> = repo_string.split(':').collect();
 	let model_repo = parts[0];
-	let default_revision = *parts.get(1).unwrap_or(&"main");
+	let mut revision = *parts.get(1).unwrap_or(&"main");
+	
+	// If revision is an empty string, set it to "main"
+	if revision.is_empty() {
+		revision = "main";
+	}
+	
 	let embedder_type_str = parts.get(2).cloned();
 	
 	let embedder_type = match embedder_type_str {
@@ -104,7 +145,7 @@ fn parse_repo_string(repo_string: &str) -> Result<(&str, &str, EmbedderType)> {
 	    }
 	};
 	
-	Ok((model_repo, default_revision, embedder_type))
+	Ok((model_repo, revision, embedder_type))
 }
 
 #[cfg(test)]
@@ -165,6 +206,18 @@ mod test {
 		assert_eq!(model_repo, "sentence-transformers/all-MiniLM-L6-v2");
 		assert_eq!(default_revision, "main");
 		assert_eq!(et, EmbedderType::Bert);
+		
+		let repo_string = "sentence-transformers/all-MiniLM-L6-v2:";
+		let (model_repo, default_revision, et) = parse_repo_string(repo_string)?;
+		assert_eq!(model_repo, "sentence-transformers/all-MiniLM-L6-v2");
+		assert_eq!(default_revision, "main");
+		assert_eq!(et, EmbedderType::Bert);
+		
+		let repo_string = "sentence-transformers/all-MiniLM-L6-v2::jinabert";
+		let (model_repo, default_revision, et) = parse_repo_string(repo_string)?;
+		assert_eq!(model_repo, "sentence-transformers/all-MiniLM-L6-v2");
+		assert_eq!(default_revision, "main");
+		assert_eq!(et, EmbedderType::JinaBert);
 		
 		let repo_string = "jinaai/jina-embeddings-v2-base-en";
 		let (model_repo, default_revision, et) = parse_repo_string(repo_string)?;

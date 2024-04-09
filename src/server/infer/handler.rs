@@ -66,6 +66,7 @@ where
 #[cfg(test)]
 mod test {
     use candle_core::Tensor;
+    
     use crate::model::device::DEVICE;
     use crate::server::infer::client::Client;
     use crate::server::infer::DedicatedExecutor;
