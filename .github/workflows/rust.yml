@@ -14,7 +14,18 @@ jobs:
 
     steps:
     - uses: actions/checkout@v3
+
     - name: Build
       run: cargo build --verbose
+
+    - name: Check formatting
+      run: cargo fmt -- --check
+
+    - name: Check clippy
+      run: cargo clippy -- -D warnings
+
+    - name: Publish dry-run
+      run: (cd crates/glowrs && cargo publish --dry-run)
+
     - name: Run tests
       run: cargo test --verbose
