@@ -10,29 +10,22 @@ use std::time::Duration;
 use clap::Args;
 use thiserror::__private::AsDisplay;
 
-use crate::infer::embed::EmbeddingsHandler;
-use crate::server::routes::{default, embeddings};
+use crate::server::routes::{default, embeddings, models::list_models};
 use crate::server::state::ServerState;
 
 #[derive(Debug, Args)]
 pub struct RouterArgs {
-    #[clap(short, long)]
-    pub model_repo: String,
-    
-    #[clap(short, long, default_value = "main")]
-    pub revision: String,
+    #[clap(short, long, num_args(1..), required = true)]
+    pub model_repo: Vec<String>,
 }
 
 pub fn init_router(args: &RouterArgs) -> anyhow::Result<Router> {
-    let embeddings_handler = EmbeddingsHandler::new(
-        &args.model_repo,
-        &args.revision,
-    )?;
     
-    let state = Arc::new(ServerState::new(embeddings_handler)?);
+    let state = Arc::new(ServerState::new(args.model_repo.clone())?);
 
     let router = Router::new()
         .route("/v1/embeddings", post(embeddings::infer_text_embeddings))
+        .route("/v1/models", get(list_models))
         .route("/health", get(default::health_check))
         .with_state(state)
         .layer((

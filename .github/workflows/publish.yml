@@ -1,0 +1,64 @@
+name: Publish Package
+on:
+  push:
+    branches:
+      - master
+jobs:
+  publish:
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v2
+      - name: Setup Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+
+      - name: Get current version
+        id: cv
+        run: |
+          curr_vers=$(cargo pkgid | awk -F'#' '{ print $2 }')
+          echo "Curr_Vers=${curr_vers}"
+          echo ::set-output name=curr_version::${curr_vers}
+
+      - name: Get current tag
+        id: git
+        run: |
+          if git rev-parse --verify --quiet refs/tags/HEAD > /dev/null
+          then
+            curr_tag=$(git describe --tags $(git rev-list --tags --max-count=1))
+            echo "Curr_Tag=${curr_tag}"
+            echo ::set-output name=curr_tag::${curr_tag}
+          else
+            echo "No git tags found. Please create a git tag."
+            exit 1
+          fi
+
+      - name: Get last tag
+        id: gitlast
+        run: |
+          last_tag=$(git describe --tags $(git rev-list --tags --max-count=2 | tail -1))
+          echo "Last_Tag=${last_tag}"
+          echo ::set-output name=last_tag::${last_tag}
+
+      - name: Check version and tag
+        run: |
+          curr_tag="${{ steps.git.outputs.curr_tag }}"
+          curr_ver="${{ steps.cv.outputs.curr_version }}"
+          last_tag="${{ steps.gitlast.outputs.last_tag }}"
+          if [ $curr_tag != $curr_ver ]
+          then
+            echo "Current version and tag do not match!"
+            exit 1
+          fi
+          if [[ $(printf '%s\n' "$last_tag" "$curr_tag" | sort -V | tail -n 1) != $curr_tag ]]
+          then
+            echo "Current tag is not newer than the last tag!"
+            exit 1
+          fi
+
+      - name: Publish to crates.io
+        uses: actions-rs/cargo@v1
+        with:
+          command: publish
+          args: --token ${{ secrets.CRATES_TOKEN }}

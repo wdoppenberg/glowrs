@@ -16,7 +16,10 @@ pub async fn infer_text_embeddings(
 ) -> Result<(StatusCode, Json<EmbeddingsResponse>), ServerError>
 {
     let start = Instant::now();
-    let response = server_state.embeddings_client.generate_embedding(embeddings_request).await?;
+    let (client, _) = server_state.model_map.get(&embeddings_request.model)
+        .ok_or(ServerError::ModelNotFound)?;
+    
+    let response = client.generate_embedding(embeddings_request).await?;
 
     let duration = Instant::now() - start;
     tracing::trace!("Inference took {} ms", duration.as_millis());
@@ -30,19 +33,13 @@ mod tests {
     use tokio::time::Instant;
     use std::sync::Arc;
     use anyhow::Context;
-    use crate::infer::embed::EmbeddingsHandler;
 
     use crate::server::data_models::{EncodingFormat::Float, Sentences};
 
     #[tokio::test]
     async fn test_text_embeddings_request() -> Result<()> {
-        let embeddings_handler = EmbeddingsHandler::new(
-            "jinaai/jina-embeddings-v2-base-en",
-            "main",
-        ).context("Failed to create embeddings processor")?;
-
         let server_state = Arc::new(
-            ServerState::new(embeddings_handler)
+            ServerState::new(vec!["jinaai/jina-embeddings-v2-base-en".to_string()])
                 .context("Failed to create server state")?
         );
         let embeddings_request = EmbeddingsRequest {

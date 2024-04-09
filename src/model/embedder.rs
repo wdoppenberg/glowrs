@@ -87,6 +87,7 @@ where
     Ok((model, tokenizer))
 }
 
+#[derive(Debug, PartialEq)]
 pub enum EmbedderType {
     Bert,
     JinaBert,

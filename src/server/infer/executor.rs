@@ -2,12 +2,12 @@ use anyhow::Result;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 use uuid::Uuid;
 
-use crate::infer::batch::QueueEntry;
-use crate::infer::handler::RequestHandler;
+use crate::server::infer::batch::QueueEntry;
+use crate::server::infer::handler::RequestHandler;
 
 /// Queue command
 #[allow(dead_code)]
-pub(crate) enum QueueCommand<THandler>
+pub(crate) enum Command<THandler>
 where
     THandler: RequestHandler
 {
@@ -17,50 +17,50 @@ where
 
 /// Request Queue with stateful task processor
 #[derive(Clone)]
-pub struct Queue<THandler>
+pub struct DedicatedExecutor<THandler>
 where
     THandler: RequestHandler,
 {
-    pub(crate) tx: UnboundedSender<QueueCommand<THandler>>,
+    pub(crate) tx: UnboundedSender<Command<THandler>>,
 }
 
-impl<THandler> Queue<THandler>
+impl<THandler> DedicatedExecutor<THandler>
 where
     THandler: RequestHandler
 {
     pub(crate) fn new(processor: THandler) -> Result<Self> {
 
         // Create channel
-        let (queue_tx, queue_rx) = unbounded_channel();
+        let (tx, rx) = unbounded_channel();
 
         let _join_handle = std::thread::spawn(move || {
 
             // Create a new Runtime to run tasks
             let runtime = tokio::runtime::Builder::new_multi_thread()
                 .enable_all()
-                .thread_name(format!("queue-{}", Uuid::new_v4()))
+                .thread_name(format!("worker-{}", Uuid::new_v4()))
                 .build()?;
 
             // Pull task requests off the channel and send them to the executor
-            runtime.block_on(queue_task(queue_rx, processor))
+            runtime.block_on(queue_task(rx, processor))
         });
 
         Ok(Self {
-            tx: queue_tx,
+            tx,
         })
     }
 }
 
 // Generic background task executor with stateful processor
 async fn queue_task<THandler>(
-    mut receiver: UnboundedReceiver<QueueCommand<THandler>>,
+    mut receiver: UnboundedReceiver<Command<THandler>>,
     mut processor: THandler,
 ) -> Result<()>
 where
     THandler: RequestHandler
 {
     'main: while let Some(cmd) = receiver.recv().await {
-        use QueueCommand::*;
+        use Command::*;
 
         match cmd {
             Append(entry) => {
@@ -114,8 +114,8 @@ mod tests {
     }
     
     impl RequestHandler for TaskProcessor {
-        type TReq = Task;
-        type TResp = Task;
+        type Input = Task;
+        type Output = Task;
 
 
         fn handle(&mut self, request: Task) -> Result<Task> {
@@ -129,8 +129,8 @@ mod tests {
         // Create a new processor
         let processor = TaskProcessor::new().unwrap();
         
-        // Create a new queue
-        let queue: Queue<TaskProcessor> = Queue::new(processor).unwrap();
+        // Create a new executor
+        let executor: DedicatedExecutor<TaskProcessor> = DedicatedExecutor::new(processor).unwrap();
 
         // Set a task name
         let name = "test".to_string();
@@ -140,7 +140,7 @@ mod tests {
 
         // Send the task to the queue
         let (task_tx, task_rx) = oneshot::channel();
-        queue.tx.send(QueueCommand::Append(QueueEntry::new(task, task_tx))).unwrap();
+        executor.tx.send(Command::Append(QueueEntry::new(task, task_tx))).unwrap();
 
         // Wait for the response
         let response = task_rx.await.unwrap();

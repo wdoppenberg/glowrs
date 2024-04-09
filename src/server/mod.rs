@@ -3,6 +3,8 @@ mod state;
 pub mod routes;
 pub mod utils;
 pub mod data_models;
+pub mod infer;
+mod config;
 
 pub use init::{init_router, RouterArgs};
 
@@ -14,6 +16,9 @@ use thiserror::Error;
 pub enum ServerError {
 	#[error("Internal server error: `{0}`")]
 	InternalServerError(#[from] anyhow::Error),
+	
+	#[error("Model not found")]
+	ModelNotFound,
 	
 	#[error("Too many requests.")]
 	TooManyRequestsError,
@@ -28,6 +33,7 @@ impl IntoResponse for ServerError {
     		ServerError::InternalServerError(err) => (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()).into_response(),
     		ServerError::TooManyRequestsError => StatusCode::TOO_MANY_REQUESTS.into_response(),
     		ServerError::InferenceError => StatusCode::BAD_REQUEST.into_response(),
+			ServerError::ModelNotFound => StatusCode::NOT_FOUND.into_response(),
     	}
 	}
 }
