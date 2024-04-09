@@ -8,6 +8,7 @@ homepage = "https://github.com/wdoppenberg/glowrs"
 documentation = "https://docs.rs/glowrs/"
 readme = "README.md"
 keywords = ["candle", "ai", "deep-learning", "embeddings", "openai"]
+license-file = "../../LICENSE"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
