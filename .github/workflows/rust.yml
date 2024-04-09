@@ -13,7 +13,13 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
+
+    - uses: Swatinem/rust-cache@v2
+      with:
+        workspaces: |
+          crates/glowrs
+          crates/glowrs-server
 
     - name: Build
       run: cargo build --verbose
