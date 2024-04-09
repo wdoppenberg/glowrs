@@ -1,6 +1,6 @@
 use tokio::sync::oneshot;
-use uuid::Uuid;
 use tokio::time::Instant;
+use uuid::Uuid;
 
 use crate::server::infer::handler::RequestHandler;
 use crate::server::infer::TaskId;
@@ -9,7 +9,7 @@ use crate::server::infer::TaskId;
 #[derive(Debug)]
 pub(crate) struct QueueEntry<THandler>
 where
-    THandler: RequestHandler
+    THandler: RequestHandler,
 {
     /// Identifier
     pub id: TaskId,
@@ -24,8 +24,9 @@ where
     pub queue_time: Instant,
 }
 
-impl<THandler> QueueEntry<THandler> 
-where THandler: RequestHandler 
+impl<THandler> QueueEntry<THandler>
+where
+    THandler: RequestHandler,
 {
     pub fn new(request: THandler::Input, response_tx: oneshot::Sender<THandler::Output>) -> Self {
         Self {

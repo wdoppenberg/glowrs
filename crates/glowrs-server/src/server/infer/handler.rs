@@ -1,14 +1,14 @@
 use std::marker::PhantomData;
 
 /// Trait representing a (stateful) task processor that should run inside its
-/// own thread. 
+/// own thread.
 pub trait RequestHandler
 where
     Self: Send + Sized + 'static,
 {
     type Input: Send + Sync + 'static;
     type Output: Send + Sync + 'static;
-    
+
     fn handle(&mut self, request: Self::Input) -> anyhow::Result<Self::Output>;
 }
 
@@ -17,11 +17,11 @@ where
     Self: Send + 'static,
     F: Fn(Input) -> Output,
     Input: Send + Sync + 'static,
-    Output: Send + Sync + 'static
+    Output: Send + Sync + 'static,
 {
     op: F,
     _req: PhantomData<Input>,
-    _resp: PhantomData<Output>
+    _resp: PhantomData<Output>,
 }
 
 impl<F, Input, Output> CustomFnRequestHandler<F, Input, Output>
@@ -29,10 +29,14 @@ where
     Self: Send + 'static,
     F: Fn(Input) -> Output,
     Input: Send + Sync + 'static,
-    Output: Send + Sync + 'static
+    Output: Send + Sync + 'static,
 {
     pub(crate) fn new(op: F) -> Self {
-        Self {op, _req: PhantomData, _resp: PhantomData}
+        Self {
+            op,
+            _req: PhantomData,
+            _resp: PhantomData,
+        }
     }
 }
 
@@ -41,7 +45,7 @@ where
     Self: Send + 'static,
     F: Fn(Input) -> Output,
     Input: Send + Sync + 'static,
-    Output: Send + Sync + 'static
+    Output: Send + Sync + 'static,
 {
     fn from(op: F) -> Self {
         Self::new(op)
@@ -53,7 +57,7 @@ where
     Self: Send + 'static,
     F: Fn(Input) -> Output,
     Input: Send + Sync + 'static,
-    Output: Send + Sync + 'static
+    Output: Send + Sync + 'static,
 {
     type Input = Input;
     type Output = Output;
@@ -67,10 +71,10 @@ where
 mod test {
     use candle_core::Tensor;
     use glowrs::model::device::DEVICE;
-    
+
     use crate::server::infer::client::Client;
-    use crate::server::infer::DedicatedExecutor;
     use crate::server::infer::handler::CustomFnRequestHandler;
+    use crate::server::infer::DedicatedExecutor;
 
     fn append_str(s_in: String) -> String {
         format!("{}-processed", s_in)
@@ -101,9 +105,7 @@ mod test {
 
         let t1 = Tensor::randn::<_, f32>(0., 2., (1, TENSOR_DIM), &DEVICE).unwrap();
 
-        let tensor_handler = CustomFnRequestHandler::from(
-            move |t2| some_tensor_op(&t1, &t2)
-        );
+        let tensor_handler = CustomFnRequestHandler::from(move |t2| some_tensor_op(&t1, &t2));
 
         let executor = DedicatedExecutor::new(tensor_handler).unwrap();
 
