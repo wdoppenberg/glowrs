@@ -33,8 +33,9 @@ mod tests {
     use tokio::time::Instant;
     use std::sync::Arc;
     use anyhow::Context;
+	use glowrs::Sentences;
 
-    use crate::server::data_models::{EncodingFormat::Float, Sentences};
+	use crate::server::data_models::EncodingFormat::Float;
 
     #[tokio::test]
     async fn test_text_embeddings_request() -> Result<()> {

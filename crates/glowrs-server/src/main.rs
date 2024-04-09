@@ -6,9 +6,11 @@ use tokio::net::TcpListener;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use glowrs::model::device::print_device_info;
-use glowrs::server::utils;
-use glowrs::server::{init_router, RouterArgs};
-use glowrs::server::utils::port_in_range;
+
+mod server;
+use server::utils;
+use server::{init_router, RouterArgs};
+use server::utils::port_in_range;
 
 
 #[derive(Debug, Parser)]

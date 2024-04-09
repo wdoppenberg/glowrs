@@ -11,6 +11,7 @@ use clap::Args;
 use thiserror::__private::AsDisplay;
 
 use crate::server::routes::{default, embeddings, models::list_models};
+use crate::server::routes::models::get_model;
 use crate::server::state::ServerState;
 
 #[derive(Debug, Args)]
@@ -26,6 +27,7 @@ pub fn init_router(args: &RouterArgs) -> anyhow::Result<Router> {
     let router = Router::new()
         .route("/v1/embeddings", post(embeddings::infer_text_embeddings))
         .route("/v1/models", get(list_models))
+        .route("/v1/models/:model_id", get(get_model))
         .route("/health", get(default::health_check))
         .with_state(state)
         .layer((
