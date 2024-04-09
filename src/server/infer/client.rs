@@ -1,44 +1,44 @@
 use anyhow::Result;
 use tokio::sync::oneshot;
 use tokio::sync::mpsc::UnboundedSender;
-use crate::infer::batch::QueueEntry;
 
-use crate::infer::handler::RequestHandler;
-use crate::infer::Queue;
-use crate::infer::queue::QueueCommand;
+use crate::server::infer::batch::QueueEntry;
+use crate::server::infer::handler::RequestHandler;
+use crate::server::infer::DedicatedExecutor;
+use crate::server::infer::executor::Command;
 
 
 pub(crate) struct Client<THandler> 
 where THandler: RequestHandler
 {
-	tx: UnboundedSender<QueueCommand<THandler>>,
+	tx: UnboundedSender<Command<THandler>>,
 }
 
 impl<THandler> Client<THandler> 
 where THandler: RequestHandler
 {
-	pub(crate) fn new(queue: &Queue<THandler>) -> Self {
+	pub(crate) fn new(executor: &DedicatedExecutor<THandler>) -> Self {
 		Self {
-			tx: queue.tx.clone(),
+			tx: executor.tx.clone(),
 		}
 	}
 	
 	pub(crate) async fn send(
 		&self,
-		value: THandler::TReq,
-    ) -> Result<oneshot::Receiver<THandler::TResp>> {
+		value: THandler::Input,
+    ) -> Result<oneshot::Receiver<THandler::Output>> {
 		// Create channel
-        let (queue_tx, queue_rx) = oneshot::channel();
+        let (tx, rx) = oneshot::channel();
 		
 		// Create command
-        let entry = QueueEntry::new(value, queue_tx);
-	    let command = QueueCommand::Append(entry);
+        let entry = QueueEntry::new(value, tx);
+	    let command = Command::Append(entry);
 		
 		// Send command
         self.tx.send(command)?;
 		
 		// Return receiver
-	    Ok(queue_rx)
+	    Ok(rx)
 	}
 }
 

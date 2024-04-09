@@ -1,3 +1,4 @@
+import openai
 from openai import AsyncOpenAI
 from httpx import AsyncClient
 from time import time
@@ -13,12 +14,12 @@ openai_client = AsyncOpenAI(
 
 async def create_embeddings() -> tuple[CreateEmbeddingResponse, ...]:
 	embeddings = await openai_client.embeddings.create(
-		input=["This is a sentence that requires a model and is quite long for a normal sentence"] * 10,
+		input=["This is a sentence that requires a model and is quite long for a normal sentence"] * 5,
 		model="sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
 	)
 
 	embeddings_jina = await openai_client.embeddings.create(
-		input=["This is a sentence that requires a model and is quite long for a normal sentence"] * 10,
+		input=["This is a sentence that requires a model and is quite long for a normal sentence"] * 5,
 		model="jinaai/jina-embeddings-v2-base-en",
 	)
 
@@ -34,10 +35,25 @@ async def call_health() -> None:
 			response.raise_for_status()
 
 
+async def call_model_list() -> None:
+	model_list = await openai_client.models.list()
+	print(model_list)
+
+
 async def main():
 	start = time()
 
-	await asyncio.gather(call_health(), *(create_embeddings() for _ in range(100)))
+	await asyncio.gather(call_health(), *(create_embeddings() for _ in range(10)))
+
+	try:
+		await openai_client.embeddings.create(
+			input=["This is a sentence that requires a model and is quite long for a normal sentence"] * 5,
+			model="does-not-exist",
+		)
+	except openai.NotFoundError as e:
+		print("Correctly raised NotFoundError")
+
+	await call_model_list()
 
 	print(f"Done in {time() - start}")
 

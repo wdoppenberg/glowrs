@@ -1,28 +1,48 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 use anyhow::Result;
 
-use crate::infer::embed::EmbeddingsHandler;
-use crate::infer::Queue;
-use crate::infer::embed::EmbeddingsClient;
+use crate::server::infer::embed::EmbeddingsHandler;
+use crate::server::infer::DedicatedExecutor;
+use crate::server::infer::embed::EmbeddingsClient;
 
+// TODO: Create a struct to hold the model map
+// TODO: Needs to support externally provided models (e.g. other gRPC services)
+type EmbeddingModelMap = HashMap<
+    String, 
+    (EmbeddingsClient, Arc<DedicatedExecutor<EmbeddingsHandler>>)
+>;
 
 /// Represents the state of the server.
 #[derive(Clone)]
 pub struct ServerState {
-    pub embeddings_client: EmbeddingsClient,
-    // TODO: Fix queue + handler thread despawning
-    pub embeddings_queue: Arc<Queue<EmbeddingsHandler>>,
+    pub model_map: EmbeddingModelMap,
 }
 
 
 impl ServerState {
     pub fn new(
-        embeddings_handler: EmbeddingsHandler,
+        model_repos: Vec<String>,
     ) -> Result<Self> {
-        let embeddings_queue = Queue::new(embeddings_handler)?;
+        if model_repos.is_empty() {
+            return Err(anyhow::anyhow!("No models provided"));
+        }
 
-        let embeddings_client = EmbeddingsClient::new(&embeddings_queue);
+        let map = model_repos
+            .into_iter()
+            .filter_map(|model_repo| {
 
-        Ok(Self { embeddings_client, embeddings_queue: Arc::new(embeddings_queue) })
+                let handler = EmbeddingsHandler::from_repo_string(&model_repo).ok()?;
+                let name = handler.get_name();
+                let executor = DedicatedExecutor::new(handler).ok()?;
+                let client = EmbeddingsClient::new(&executor);
+
+                Some((name, (client, Arc::new(executor))))
+            })
+            .collect::<EmbeddingModelMap>();
+        
+        Ok(Self {
+            model_map: map,
+        })
     }
 }
