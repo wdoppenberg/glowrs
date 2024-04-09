@@ -9,6 +9,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Check current version
+        id: check-version
+        run: |
+          LAST_PUBLISHED_VERSION=$(cargo search glowrs --limit 1 | awk '{print $3}' | tr -d '"')
+          LOCAL_VERSION=$(grep -e '^version\s*=\s*"' crates/glowrs/Cargo.toml | head -1 | cut -d '"' -f2)
+          if [ "$LAST_PUBLISHED_VERSION" == "$LOCAL_VERSION" ]; then
+            echo "::set-output name=skip-publish::true"
+          fi
+
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: |
@@ -17,3 +26,4 @@ jobs:
 
       - name: Publish glowrs
         run: (cd crates/glowrs && cargo publish --token ${{ secrets.CRATES_TOKEN }})
+        if: steps.check-version.outputs.skip-publish != 'true'
