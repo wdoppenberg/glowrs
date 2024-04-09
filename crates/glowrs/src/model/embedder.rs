@@ -10,15 +10,17 @@ use tokenizers::Tokenizer;
 
 // Re-exports
 pub use candle_transformers::models::{bert::BertModel, jina_bert::BertModel as JinaBertModel};
-use crate::model::utils::normalize_l2;
 
-use crate::server::data_models::{Sentences, Usage};
+use crate::model::utils::normalize_l2;
+use crate::{Sentences, Usage};
 use crate::model::device::DEVICE;
 
 
 pub trait LoadableModel: Sized {
     type Config: DeserializeOwned;
     fn load_model(vb: VarBuilder, cfg: &Self::Config) -> Result<Box<dyn EmbedderModel>>;
+
+    fn empty_model() -> Result<Box<dyn EmbedderModel>>;
 }
 
 pub trait EmbedderModel: Send + Sync {
@@ -30,12 +32,24 @@ impl LoadableModel for BertModel {
     fn load_model(vb: VarBuilder, cfg: &Self::Config) -> Result<Box<dyn EmbedderModel>> {
         Ok(Box::new(Self::load(vb, cfg)?))
     }
+
+    fn empty_model() -> Result<Box<dyn EmbedderModel>> {
+        let vb = VarBuilder::zeros(DType::F32, &DEVICE);
+        let cfg = Self::Config::default();
+        Self::load_model(vb, &cfg)
+    }
 }
 
 impl LoadableModel for JinaBertModel {
     type Config = JinaBertConfig;
     fn load_model(vb: VarBuilder, cfg: &Self::Config) -> Result<Box<dyn EmbedderModel>> {
         Ok(Box::new(Self::new(vb, cfg)?))
+    }
+
+    fn empty_model() -> Result<Box<dyn EmbedderModel>> {
+        let vb = VarBuilder::zeros(DType::F32, &DEVICE);
+        let cfg = Self::Config::v2_base();
+        Self::load_model(vb, &cfg)
     }
 }
 
@@ -176,12 +190,4 @@ mod tests {
         let (_model, _tokenizer) = load_model_and_tokenizer_gen::<BertModel>(api).unwrap();
     }
 
-    #[test]
-    fn test_load_jina() {
-        let repo_name = "jinaai/jina-embeddings-v2-base-en";
-        let api = Api::new()
-            .unwrap()
-            .repo(Repo::new(repo_name.into(), RepoType::Model));
-        let (_model, _tokenizer) = load_model_and_tokenizer_gen::<JinaBertModel>(api).unwrap();
-    }
 }

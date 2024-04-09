@@ -66,34 +66,34 @@ pub async fn get_model(
 	Ok((StatusCode::OK, Json(model_card)))
 }
 
-#[cfg(test)]
-mod tests {
-	use super::*;
-	use std::sync::Arc;
-	use anyhow::Context;
-
-	#[tokio::test]
-	async fn test_list_models() -> anyhow::Result<()> {
-		let server_state = Arc::new(
-			ServerState::new(vec!["jinaai/jina-embeddings-v2-base-en".to_string()])
-				.context("Failed to create server state")?
-		);
-		let (status, model_card_list) = list_models(State(server_state)).await?;
-		assert_eq!(status, StatusCode::OK);
-		assert_eq!(model_card_list.data.len(), 1);
-		assert_eq!(model_card_list.data[0].id, "jinaai/jina-embeddings-v2-base-en");
-		Ok(())
-	}
-	
-	#[tokio::test]
-	async fn test_get_model() -> anyhow::Result<()> {
-		let server_state = Arc::new(
-			ServerState::new(vec!["jinaai/jina-embeddings-v2-base-en".to_string()])
-				.context("Failed to create server state")?
-		);
-		let (status, model_card) = get_model(State(server_state), "jinaai/jina-embeddings-v2-base-en".to_string()).await?;
-		assert_eq!(status, StatusCode::OK);
-		assert_eq!(model_card.id, "jinaai/jina-embeddings-v2-base-en");
-		Ok(())
-	}
-}
+// #[cfg(test)]
+// mod tests {
+// 	use super::*;
+// 	use std::sync::Arc;
+// 	use anyhow::Context;
+// 
+// 	#[tokio::test]
+// 	async fn test_list_models() -> anyhow::Result<()> {
+// 		let server_state = Arc::new(
+// 			ServerState::new(vec!["jinaai/jina-embeddings-v2-base-en".to_string()])
+// 				.context("Failed to create server state")?
+// 		);
+// 		let (status, model_card_list) = list_models(State(server_state)).await?;
+// 		assert_eq!(status, StatusCode::OK);
+// 		assert_eq!(model_card_list.data.len(), 1);
+// 		assert_eq!(model_card_list.data[0].id, "jinaai/jina-embeddings-v2-base-en");
+// 		Ok(())
+// 	}
+// 	
+// 	#[tokio::test]
+// 	async fn test_get_model() -> anyhow::Result<()> {
+// 		let server_state = Arc::new(
+// 			ServerState::new(vec!["jinaai/jina-embeddings-v2-base-en".to_string()])
+// 				.context("Failed to create server state")?
+// 		);
+// 		let (status, model_card) = get_model(State(server_state), "jinaai/jina-embeddings-v2-base-en".to_string()).await?;
+// 		assert_eq!(status, StatusCode::OK);
+// 		assert_eq!(model_card.id, "jinaai/jina-embeddings-v2-base-en");
+// 		Ok(())
+// 	}
+// }

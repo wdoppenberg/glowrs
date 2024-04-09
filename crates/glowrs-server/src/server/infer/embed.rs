@@ -1,7 +1,8 @@
+use glowrs::SentenceTransformer;
+
 use crate::server::infer::client::Client;
 use crate::server::infer::handler::RequestHandler;
 use crate::server::infer::DedicatedExecutor;
-use crate::model::sentence_transformer::SentenceTransformer;
 use crate::server::data_models::{EmbeddingsRequest, EmbeddingsResponse};
 
 pub struct EmbeddingsHandler {

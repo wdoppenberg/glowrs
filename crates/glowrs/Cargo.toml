@@ -1,0 +1,33 @@
+[package]
+name = "glowrs"
+version = "0.1.3"
+edition = "2021"
+license-file = "LICENSE"
+description = "SentenceTransformers for candle-rs"
+repository = "https://github.com/wdoppenberg/glowrs"
+homepage = "https://github.com/wdoppenberg/glowrs"
+documentation = "https://docs.rs/glowrs/"
+readme = "README.md"
+keywords = ["candle", "ai", "deep-learning", "embeddings", "openai"]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+candle-core = { workspace = true }
+candle-nn = { workspace = true }
+candle-transformers = { workspace = true }
+serde = { version = "1.0.183", features = ["derive"] }
+serde_json = "1.0.111"
+tracing = "0.1.37"
+uuid = { version = "1.6.1", features = ["v4"] }
+tokenizers = "0.15.0"
+hf-hub = { version = "0.3.2", features = ["tokio"] }
+anyhow = "1.0.79"
+thiserror = "1.0.56"
+once_cell = "1.19.0"
+
+[features]
+default = []
+metal = ["candle-core/metal", "candle-nn/metal", "candle-transformers/metal"]
+accelerate = ["candle-core/accelerate", "candle-nn/accelerate", "candle-transformers/accelerate"]
+cuda = ["candle-core/cuda", "candle-nn/cuda", "candle-transformers/cuda"]

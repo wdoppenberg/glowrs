@@ -4,8 +4,9 @@ use hf_hub::api::sync::Api;
 use hf_hub::{Repo, RepoType};
 use tokenizers::tokenizer::Tokenizer;
 
-use crate::server::data_models::{Sentences, Usage};
+use crate::Usage;
 use crate::model::embedder::{EmbedderModel, EmbedderType, encode_batch, encode_batch_with_usage, load_model_and_tokenizer};
+use crate::Sentences;
 
 /// The SentenceTransformer struct is the main entry point for using pre-trained models for embeddings and sentence similarity.
 /// 
@@ -154,12 +155,12 @@ mod test {
 	use super::*;
 	use std::time::Instant;
 
-	#[tokio::test]
-	async fn test_sentence_transformer() -> Result<()> {
+	#[test]
+	fn test_sentence_transformer() -> Result<()> {
 		let start = Instant::now();
 
 		let model_repo = "sentence-transformers/all-MiniLM-L6-v2";
-		let default_revision = "refs/pr/21";
+		let default_revision = "main";
 		let sentence_transformer: SentenceTransformer = SentenceTransformer::from_repo(
 			model_repo, 
 			default_revision,

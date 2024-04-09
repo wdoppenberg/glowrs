@@ -1,39 +1,7 @@
 use candle_core::Tensor;
 use serde::{Deserialize, Serialize};
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(untagged)]
-pub enum Sentences {
-    Single(String),
-    Multiple(Vec<String>),
-}
-
-impl From<String> for Sentences {
-    fn from(s: String) -> Self {
-        Self::Single(s)
-    }
-}
-
-impl From<Vec<&str>> for Sentences {
-    fn from(strings: Vec<&str>) -> Self {
-        Self::Multiple(strings.into_iter().map(|s| s.to_string()).collect())
-    }
-}
-
-impl From<Vec<String>> for Sentences {
-    fn from(strings: Vec<String>) -> Self {
-        Self::Multiple(strings)
-    }
-}
-
-impl From<Sentences> for Vec<String> {
-    fn from(sentences: Sentences) -> Self {
-        match sentences {
-            Sentences::Single(s) => vec![s],
-            Sentences::Multiple(vec) => vec,
-        }
-    }
-}
+use glowrs::Sentences;
+use glowrs::Usage;
 
 #[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "lowercase")]
@@ -51,12 +19,6 @@ pub struct EmbeddingsRequest {
     pub user: Option<String>
 }
 
-#[derive(Debug, Serialize, PartialEq, Default)]
-pub struct Usage {
-    pub prompt_tokens: u32,
-    pub total_tokens: u32,
-}
-
 #[derive(Debug, Serialize)]
 pub struct EmbeddingsResponse {
     pub object: String,
@@ -66,16 +28,7 @@ pub struct EmbeddingsResponse {
 }
 
 impl EmbeddingsResponse {
-    pub fn empty() -> Self {
-        Self {
-            object: "list".into(),
-            data: Vec::new(),
-            model: "".into(),
-            usage: Default::default(),
-        }
-    }
-
-    
+   
     pub fn from_embeddings(embeddings: Tensor, usage: Usage, model: String) -> Self {
         let inner_responses: Vec<InnerEmbeddingsResponse> = embeddings
             .to_vec2()

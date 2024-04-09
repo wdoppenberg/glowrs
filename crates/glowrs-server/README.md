@@ -1,38 +1,8 @@
 # `glowrs`
 
-# Library Usage
-
- 
-The `glowrs` library provides an easy and familiar interface to use pre-trained models for embeddings and sentence similarity.
- 
-## Example
-
-```rust
-use glowrs::SentenceTransformer;
-
-fn main() {
-    let encoder = SentenceTransformer::from_repo_string("sentence-transformers/all-MiniLM-L6-v2").unwrap();
-
-    let sentences = vec![
-        "Hello, how are you?",
-        "Hey, how are you doing?"
-    ];
-
-    let embeddings = encoder.encode_batch(sentences, true).unwrap();
-
-    println!("{:?}", embeddings);
-}
-```
-
-## Features
- 
-- Load models from Hugging Face Hub
-- More to come!
-
-
 # Server Usage
 
-`glowrs` also provides a web server for sentence embedding inference. Uses
+`glowrs-server` is a web server for sentence embedding inference. Uses
 [`candle`](https://github.com/huggingface/candle) as Tensor framework. It currently supports Bert type models hosted on Huggingface, such as those provided by 
 [`sentence-transformers`](https://huggingface.co/sentence-transformers), 
 [`Tom Aarsen`](https://huggingface.co/tomaarsen), or [`Jina AI`](https://huggingface.co/jinaai), as long as they provide safetensors model weights.
