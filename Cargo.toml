@@ -10,3 +10,7 @@ candle-core = { version = "0.4.1" }
 candle-nn = { version = "0.4.1"}
 candle-transformers = { version = "0.4.1" }
 
+
+[workspace.package]
+license-file = "LICENSE"
+

@@ -11,10 +11,9 @@ use tokenizers::Tokenizer;
 // Re-exports
 pub use candle_transformers::models::{bert::BertModel, jina_bert::BertModel as JinaBertModel};
 
+use crate::model::device::DEVICE;
 use crate::model::utils::normalize_l2;
 use crate::{Sentences, Usage};
-use crate::model::device::DEVICE;
-
 
 pub trait LoadableModel: Sized {
     type Config: DeserializeOwned;
@@ -54,7 +53,6 @@ impl LoadableModel for JinaBertModel {
 }
 
 impl EmbedderModel for BertModel {
-
     #[inline]
     fn inner_forward(&self, token_ids: &Tensor) -> Result<Tensor> {
         let token_type_ids = token_ids.zeros_like()?;
@@ -63,14 +61,15 @@ impl EmbedderModel for BertModel {
 }
 
 impl EmbedderModel for JinaBertModel {
-
     #[inline]
     fn inner_forward(&self, token_ids: &Tensor) -> Result<Tensor> {
         Ok(self.forward(token_ids)?)
     }
 }
 
-pub(crate) fn load_model_and_tokenizer_gen<L>(api: ApiRepo) -> Result<(Box<dyn EmbedderModel>, Tokenizer)>
+pub(crate) fn load_model_and_tokenizer_gen<L>(
+    api: ApiRepo,
+) -> Result<(Box<dyn EmbedderModel>, Tokenizer)>
 where
     L: LoadableModel,
 {
@@ -88,7 +87,7 @@ where
 
     let tokenizer = Tokenizer::from_file(tokenizer_path).map_err(Error::msg)?;
     let config_str = std::fs::read_to_string(config_path)?;
-    
+
     let cfg = serde_json::from_str(&config_str)
 		.context(
 			"Failed to deserialize config.json. Make sure you have the right EmbedderModel implementation."
@@ -107,14 +106,16 @@ pub enum EmbedderType {
     JinaBert,
 }
 
-pub(crate) fn load_model_and_tokenizer(api: ApiRepo, embedder_type: EmbedderType) -> Result<(Box<dyn EmbedderModel>, Tokenizer)> {
+pub(crate) fn load_model_and_tokenizer(
+    api: ApiRepo,
+    embedder_type: EmbedderType,
+) -> Result<(Box<dyn EmbedderModel>, Tokenizer)> {
     let (model, tokenizer) = match embedder_type {
         EmbedderType::Bert => load_model_and_tokenizer_gen::<BertModel>(api)?,
         EmbedderType::JinaBert => load_model_and_tokenizer_gen::<JinaBertModel>(api)?,
     };
     Ok((model, tokenizer))
 }
-
 
 pub(crate) fn encode_batch_with_usage(
     model: &dyn EmbedderModel,
@@ -170,7 +171,6 @@ pub(crate) fn encode_batch(
     Ok(out)
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -189,5 +189,4 @@ mod tests {
         ));
         let (_model, _tokenizer) = load_model_and_tokenizer_gen::<BertModel>(api).unwrap();
     }
-
 }

@@ -1,7 +1,7 @@
 use candle_core::Tensor;
-use serde::{Deserialize, Serialize};
 use glowrs::Sentences;
 use glowrs::Usage;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "lowercase")]
@@ -16,7 +16,7 @@ pub struct EmbeddingsRequest {
     pub model: String,
     pub encoding_format: Option<EncodingFormat>,
     pub dimensions: Option<usize>,
-    pub user: Option<String>
+    pub user: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -28,7 +28,6 @@ pub struct EmbeddingsResponse {
 }
 
 impl EmbeddingsResponse {
-   
     pub fn from_embeddings(embeddings: Tensor, usage: Usage, model: String) -> Self {
         let inner_responses: Vec<InnerEmbeddingsResponse> = embeddings
             .to_vec2()

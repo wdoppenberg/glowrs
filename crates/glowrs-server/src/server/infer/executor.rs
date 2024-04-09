@@ -9,7 +9,7 @@ use crate::server::infer::handler::RequestHandler;
 #[allow(dead_code)]
 pub(crate) enum Command<THandler>
 where
-    THandler: RequestHandler
+    THandler: RequestHandler,
 {
     Append(QueueEntry<THandler>),
     Stop,
@@ -26,15 +26,13 @@ where
 
 impl<THandler> DedicatedExecutor<THandler>
 where
-    THandler: RequestHandler
+    THandler: RequestHandler,
 {
     pub(crate) fn new(processor: THandler) -> Result<Self> {
-
         // Create channel
         let (tx, rx) = unbounded_channel();
 
         let _join_handle = std::thread::spawn(move || {
-
             // Create a new Runtime to run tasks
             let runtime = tokio::runtime::Builder::new_multi_thread()
                 .enable_all()
@@ -45,9 +43,7 @@ where
             runtime.block_on(queue_task(rx, processor))
         });
 
-        Ok(Self {
-            tx,
-        })
+        Ok(Self { tx })
     }
 }
 
@@ -57,7 +53,7 @@ async fn queue_task<THandler>(
     mut processor: THandler,
 ) -> Result<()>
 where
-    THandler: RequestHandler
+    THandler: RequestHandler,
 {
     'main: while let Some(cmd) = receiver.recv().await {
         use Command::*;
@@ -88,35 +84,33 @@ where
     Ok(())
 }
 
-
 #[cfg(test)]
 mod tests {
-    use tokio::sync::oneshot;
     use super::*;
-    
+    use tokio::sync::oneshot;
+
     #[derive(Debug, PartialEq)]
     struct Task {
         name: String,
     }
-    
+
     impl Task {
         fn new(name: String) -> Self {
             Self { name }
         }
     }
-    
+
     struct TaskProcessor;
-    
+
     impl TaskProcessor {
-         fn new() -> Result<Self> {
+        fn new() -> Result<Self> {
             Ok(Self)
         }
     }
-    
+
     impl RequestHandler for TaskProcessor {
         type Input = Task;
         type Output = Task;
-
 
         fn handle(&mut self, request: Task) -> Result<Task> {
             let new_name = format!("{}-processed", request.name);
@@ -128,22 +122,28 @@ mod tests {
     async fn test_queue() {
         // Create a new processor
         let processor = TaskProcessor::new().unwrap();
-        
+
         // Create a new executor
         let executor: DedicatedExecutor<TaskProcessor> = DedicatedExecutor::new(processor).unwrap();
 
         // Set a task name
         let name = "test".to_string();
-        
+
         // Create a new task
         let task = Task::new(name.clone());
 
         // Send the task to the queue
         let (task_tx, task_rx) = oneshot::channel();
-        executor.tx.send(Command::Append(QueueEntry::new(task, task_tx))).unwrap();
+        executor
+            .tx
+            .send(Command::Append(QueueEntry::new(task, task_tx)))
+            .unwrap();
 
         // Wait for the response
         let response = task_rx.await.unwrap();
-        assert_eq!(response, Task::new(format!("{}-processed", name).to_string()));
+        assert_eq!(
+            response,
+            Task::new(format!("{}-processed", name).to_string())
+        );
     }
 }

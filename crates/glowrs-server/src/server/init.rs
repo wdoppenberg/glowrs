@@ -1,17 +1,17 @@
-use axum::Router;
-use std::sync::Arc;
-use axum::routing::{get, post};
-use tower_http::trace::TraceLayer;
-use axum::http::Request;
 use axum::extract::MatchedPath;
-use tracing::{info_span, Span};
-use tower_http::timeout::TimeoutLayer;
-use std::time::Duration;
+use axum::http::Request;
+use axum::routing::{get, post};
+use axum::Router;
 use clap::Args;
+use std::sync::Arc;
+use std::time::Duration;
 use thiserror::__private::AsDisplay;
+use tower_http::timeout::TimeoutLayer;
+use tower_http::trace::TraceLayer;
+use tracing::{info_span, Span};
 
-use crate::server::routes::{default, embeddings, models::list_models};
 use crate::server::routes::models::get_model;
+use crate::server::routes::{default, embeddings, models::list_models};
 use crate::server::state::ServerState;
 
 #[derive(Debug, Args)]
@@ -21,7 +21,6 @@ pub struct RouterArgs {
 }
 
 pub fn init_router(args: &RouterArgs) -> anyhow::Result<Router> {
-    
     let state = Arc::new(ServerState::new(args.model_repo.clone())?);
 
     let router = Router::new()
@@ -52,7 +51,7 @@ pub fn init_router(args: &RouterArgs) -> anyhow::Result<Router> {
                     // closures to attach a value to the initially empty field in the info_span
                     // created above.
                 }),
-            TimeoutLayer::new(Duration::from_secs(15))
+            TimeoutLayer::new(Duration::from_secs(15)),
         ));
     Ok(router)
 }

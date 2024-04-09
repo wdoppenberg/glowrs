@@ -1,7 +1,7 @@
-use std::net::IpAddr;
 use anyhow::Result;
-use std::process::ExitCode;
 use clap::Parser;
+use std::net::IpAddr;
+use std::process::ExitCode;
 use tokio::net::TcpListener;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -9,9 +9,8 @@ use glowrs::model::device::print_device_info;
 
 mod server;
 use server::utils;
-use server::{init_router, RouterArgs};
 use server::utils::port_in_range;
-
+use server::{init_router, RouterArgs};
 
 #[derive(Debug, Parser)]
 pub struct App {
@@ -21,7 +20,7 @@ pub struct App {
     #[arg(value_parser = port_in_range)]
     #[clap(short, long, default_value = "3000")]
     pub port: u16,
-    
+
     #[clap(short, long, default_value = "127.0.0.1")]
     pub host: IpAddr,
 }
@@ -34,7 +33,6 @@ async fn main() -> Result<ExitCode> {
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
                 eprintln!("No environment variables found that can initialize tracing_subscriber::EnvFilter. Using defaults.");
-                
                 // axum logs rejections from built-in extractors with the `axum::rejection`
                 // target, at `TRACE` level. `axum::rejection=trace` enables showing those events
                 "glowrs=trace,server=debug,tower_http=debug,axum::rejection=trace".into()

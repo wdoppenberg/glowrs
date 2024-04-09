@@ -7,12 +7,13 @@ jobs:
   publish:
     runs-on: ubuntu-20.04
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions-rs/toolchain@v1
+      - uses: actions/checkout@v4
+
+      - uses: Swatinem/rust-cache@v2
         with:
-          toolchain: stable
-          override: true
-      - uses: katyo/publish-crates@v2
-        with:
-          registry-token: ${{ secrets.CRATES_TOKEN }}
-          path: ./crates/glowrs
+          workspaces: |
+            crates/glowrs
+            crates/glowrs-server
+
+      - name: Publish glowrs
+        run: (cd crates/glowrs && cargo publish --token ${{ secrets.CRATES_TOKEN }})
