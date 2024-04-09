@@ -21,7 +21,8 @@ use crate::model::embedder::{EmbedderModel, EmbedderType, encode_batch, encode_b
 ///     "Hey, how are you doing?"
 ///  ];
 /// 
-///  let embeddings = encoder.encode_batch(sentences, true).unwrap();
+///  let normalize = false;
+///  let embeddings = encoder.encode_batch(sentences, normalize).unwrap();
 /// 
 ///  println!("{:?}", embeddings);
 ///  ```
