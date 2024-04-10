@@ -21,10 +21,3 @@ repos:
         language: system
         types: [rust]
         pass_filenames: false
-
-      - id: cargo-publish-dry-run
-        name: cargo-publish-dry-run
-        entry: cargo publish -p glowrs --dry-run
-        language: system
-        types: [rust]
-        pass_filenames: false
