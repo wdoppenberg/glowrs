@@ -35,6 +35,6 @@ fn main() {
 ## Disclaimer
 
 This is still a work-in-progress. The embedding performance is decent but can probably do with some
-benchmarking. Furthermore, for higher batch sizes, the program is killed due to a [bug](https://github.com/huggingface/candle/issues/1596).
+benchmarking.
 
 Do not use this in a production environment. 

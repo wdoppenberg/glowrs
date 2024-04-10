@@ -1,6 +1,6 @@
 [package]
 name = "glowrs"
-version = "0.1.3"
+version = { workspace = true }
 edition = "2021"
 description = "SentenceTransformers for candle-rs"
 repository = "https://github.com/wdoppenberg/glowrs"
@@ -31,3 +31,6 @@ default = []
 metal = ["candle-core/metal", "candle-nn/metal", "candle-transformers/metal"]
 accelerate = ["candle-core/accelerate", "candle-nn/accelerate", "candle-transformers/accelerate"]
 cuda = ["candle-core/cuda", "candle-nn/cuda", "candle-transformers/cuda"]
+
+[dev-dependencies]
+dirs = "5.0.1"

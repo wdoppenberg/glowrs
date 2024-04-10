@@ -1,4 +1,5 @@
 use anyhow::Result;
+use glowrs::model::utils::parse_repo_string;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -26,12 +27,12 @@ impl ServerState {
         let map = model_repos
             .into_iter()
             .filter_map(|model_repo| {
+                let (name, _, _) = parse_repo_string(&model_repo).ok()?;
                 let handler = EmbeddingsHandler::from_repo_string(&model_repo).ok()?;
-                let name = handler.get_name();
                 let executor = DedicatedExecutor::new(handler).ok()?;
                 let client = EmbeddingsClient::new(&executor);
 
-                Some((name, (client, Arc::new(executor))))
+                Some((name.to_string(), (client, Arc::new(executor))))
             })
             .collect::<EmbeddingModelMap>();
 

@@ -36,7 +36,7 @@ jobs:
       run: cargo clippy -- -D warnings
 
     - name: Publish dry-run
-      run: (cd crates/glowrs && cargo publish --dry-run)
+      run: cargo publish -p glowrs --dry-run
 
     - name: Run tests
       run: cargo test --verbose

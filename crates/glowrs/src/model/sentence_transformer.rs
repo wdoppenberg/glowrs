@@ -1,12 +1,18 @@
-use anyhow::Result;
-use candle_core::Tensor;
-use hf_hub::api::sync::Api;
+use crate::model::device::DEVICE;
+use anyhow::{Context, Error, Result};
+use candle_core::{DType, Tensor};
+use candle_nn::VarBuilder;
+use candle_transformers::models::bert::BertModel;
+use candle_transformers::models::jina_bert::BertModel as JinaBertModel;
+use hf_hub::api::sync::{Api, ApiRepo};
 use hf_hub::{Repo, RepoType};
+use std::path::Path;
 use tokenizers::tokenizer::Tokenizer;
 
 use crate::model::embedder::{
-    encode_batch, encode_batch_with_usage, load_model_and_tokenizer, EmbedderModel, EmbedderType,
+    encode_batch, encode_batch_with_usage, EmbedderModel, EmbedderType, LoadableModel,
 };
+use crate::model::utils;
 use crate::Sentences;
 use crate::Usage;
 
@@ -31,18 +37,13 @@ use crate::Usage;
 ///  ```
 ///
 pub struct SentenceTransformer {
-    name: String,
     model: Box<dyn EmbedderModel>,
     tokenizer: Tokenizer,
 }
 
 impl SentenceTransformer {
-    pub fn new(name: String, model: Box<dyn EmbedderModel>, tokenizer: Tokenizer) -> Self {
-        Self {
-            name,
-            model,
-            tokenizer,
-        }
+    pub fn new(model: Box<dyn EmbedderModel>, tokenizer: Tokenizer) -> Self {
+        Self { model, tokenizer }
     }
 
     /// Load a SentenceTransformer model from the Hugging Face Hub.
@@ -63,7 +64,7 @@ impl SentenceTransformer {
     ///
     ///
     pub fn from_repo_string(repo_string: &str) -> Result<Self> {
-        let (model_repo, default_revision, embedder_type) = parse_repo_string(repo_string)?;
+        let (model_repo, default_revision, embedder_type) = utils::parse_repo_string(repo_string)?;
         Self::from_repo(model_repo, default_revision, embedder_type)
     }
 
@@ -74,8 +75,87 @@ impl SentenceTransformer {
             revision.into(),
         ));
 
-        let (model, tokenizer) = load_model_and_tokenizer(api, embedder_type)?;
-        Ok(Self::new(repo_name.into(), model, tokenizer))
+        Self::from_api(api, embedder_type)
+    }
+
+    fn from_api_gen<L>(api: ApiRepo) -> Result<Self>
+    where
+        L: LoadableModel,
+    {
+        let model_path = api
+            .get("model.safetensors")
+            .context("Model repository is not available or doesn't contain `model.safetensors`.")?;
+
+        let config_path = api
+            .get("config.json")
+            .context("Model repository doesn't contain `config.json`.")?;
+
+        let tokenizer_path = api
+            .get("tokenizer.json")
+            .context("Model repository doesn't contain `tokenizer.json`.")?;
+
+        Self::from_path_gen::<L>(&model_path, &config_path, &tokenizer_path)
+    }
+
+    fn from_path_gen<L>(
+        model_path: &Path,
+        config_path: &Path,
+        tokenizer_path: &Path,
+    ) -> Result<Self>
+    where
+        L: LoadableModel,
+    {
+        let tokenizer = Tokenizer::from_file(tokenizer_path).map_err(Error::msg)?;
+        let config_str = std::fs::read_to_string(config_path)?;
+
+        let cfg = serde_json::from_str(&config_str)
+            .context(
+                "Failed to deserialize config.json. Make sure you have the right EmbedderModel implementation."
+            )?;
+
+        let vb =
+            unsafe { VarBuilder::from_mmaped_safetensors(&[model_path], DType::F32, &DEVICE)? };
+
+        let model =
+            L::load_model(vb, &cfg).context("Something went wrong while loading the model.")?;
+
+        Ok(Self::new(model, tokenizer))
+    }
+
+    pub fn from_path(
+        model_path: &Path,
+        config_path: &Path,
+        tokenizer_path: &Path,
+        embedder_type: EmbedderType,
+    ) -> Result<Self> {
+        match embedder_type {
+            EmbedderType::Bert => {
+                Self::from_path_gen::<BertModel>(model_path, config_path, tokenizer_path)
+            }
+            EmbedderType::JinaBert => {
+                Self::from_path_gen::<JinaBertModel>(model_path, config_path, tokenizer_path)
+            }
+        }
+    }
+
+    pub fn from_folder(folder_path: &Path, embedder_type: EmbedderType) -> Result<Self> {
+        // Construct PathBuf objects for model, config, and tokenizer json files
+        let model_path = folder_path.join("model.safetensors");
+        let config_path = folder_path.join("config.json");
+        let tokenizer_path = folder_path.join("tokenizer.json");
+
+        if !model_path.exists() || !config_path.exists() || !tokenizer_path.exists() {
+            Err(anyhow::anyhow!("model.safetensors, config.json, or tokenizer.json does not exist in the given directory"))
+        } else {
+            Self::from_path(&model_path, &config_path, &tokenizer_path, embedder_type)
+        }
+    }
+
+    pub fn from_api(api: ApiRepo, embedder_type: EmbedderType) -> Result<Self> {
+        match embedder_type {
+            EmbedderType::Bert => Self::from_api_gen::<BertModel>(api),
+            EmbedderType::JinaBert => Self::from_api_gen::<JinaBertModel>(api),
+        }
     }
 
     pub fn encode_batch_with_usage(
@@ -100,58 +180,6 @@ impl SentenceTransformer {
             normalize,
         )
     }
-
-    pub fn get_name(&self) -> String {
-        self.name.clone()
-    }
-}
-
-fn parse_repo_string(repo_string: &str) -> Result<(&str, &str, EmbedderType)> {
-    // Fail if the repo string is empty
-    if repo_string.is_empty() {
-        return Err(anyhow::anyhow!("Model repository string is empty"));
-    }
-
-    // Fail if the repo string contains illegal characters
-    const ILLEGAL_CHARS: [char; 6] = ['\\', '<', '>', '|', '?', '*'];
-    if repo_string.chars().any(|c| ILLEGAL_CHARS.contains(&c)) {
-        return Err(anyhow::anyhow!(
-            "Model repository string contains illegal characters"
-        ));
-    }
-
-    // Split the repo string by colon
-    let parts: Vec<&str> = repo_string.split(':').collect();
-    let model_repo = parts[0];
-    let mut revision = *parts.get(1).unwrap_or(&"main");
-
-    // If revision is an empty string, set it to "main"
-    if revision.is_empty() {
-        revision = "main";
-    }
-
-    let embedder_type_str = parts.get(2).cloned();
-
-    let embedder_type = match embedder_type_str {
-        None => {
-            // If the model repo contains "jinaai", use JinaBert, otherwise use Bert
-            if model_repo.contains("jinaai") {
-                EmbedderType::JinaBert
-            } else {
-                EmbedderType::Bert
-            }
-        }
-        Some(embedder_type) => {
-            // Match the embedder type string to the EmbedderType enum
-            match &*embedder_type.to_lowercase() {
-                "bert" => EmbedderType::Bert,
-                "jinabert" => EmbedderType::JinaBert,
-                _ => return Err(anyhow::anyhow!("Invalid embedder type")),
-            }
-        }
-    };
-
-    Ok((model_repo, revision, embedder_type))
 }
 
 #[cfg(test)]
@@ -194,51 +222,18 @@ mod test {
     }
 
     #[test]
-    fn test_parse_repo_string() -> Result<()> {
-        let repo_string = "sentence-transformers/all-MiniLM-L6-v2:refs/pr/21";
-        let (model_repo, default_revision, et) = parse_repo_string(repo_string)?;
-        assert_eq!(model_repo, "sentence-transformers/all-MiniLM-L6-v2");
-        assert_eq!(default_revision, "refs/pr/21");
-        assert_eq!(et, EmbedderType::Bert);
+    fn test_from_folder() -> Result<()> {
+        let _ = SentenceTransformer::from_repo_string("sentence-transformers/all-MiniLM-L6-v2")?;
 
-        let repo_string = "sentence-transformers/all-MiniLM-L6-v2";
-        let (model_repo, default_revision, et) = parse_repo_string(repo_string)?;
-        assert_eq!(model_repo, "sentence-transformers/all-MiniLM-L6-v2");
-        assert_eq!(default_revision, "main");
-        assert_eq!(et, EmbedderType::Bert);
+        let home_dir = dirs::home_dir().unwrap();
+        let snapshots_path = home_dir.join(
+            ".cache/huggingface/hub/models--sentence-transformers--all-MiniLM-L6-v2/snapshots/",
+        );
 
-        let repo_string = "sentence-transformers/all-MiniLM-L6-v2:";
-        let (model_repo, default_revision, et) = parse_repo_string(repo_string)?;
-        assert_eq!(model_repo, "sentence-transformers/all-MiniLM-L6-v2");
-        assert_eq!(default_revision, "main");
-        assert_eq!(et, EmbedderType::Bert);
+        // find first snapshot (folder)
+        let snapshot_path = std::fs::read_dir(snapshots_path)?.next().unwrap()?.path();
 
-        let repo_string = "sentence-transformers/all-MiniLM-L6-v2::jinabert";
-        let (model_repo, default_revision, et) = parse_repo_string(repo_string)?;
-        assert_eq!(model_repo, "sentence-transformers/all-MiniLM-L6-v2");
-        assert_eq!(default_revision, "main");
-        assert_eq!(et, EmbedderType::JinaBert);
-
-        let repo_string = "jinaai/jina-embeddings-v2-base-en";
-        let (model_repo, default_revision, et) = parse_repo_string(repo_string)?;
-        assert_eq!(model_repo, "jinaai/jina-embeddings-v2-base-en");
-        assert_eq!(default_revision, "main");
-        assert_eq!(et, EmbedderType::JinaBert);
-
-        let repo_string = "jinaai/jina-embeddings-v2-base-en:refs/pr/21:bert";
-        let (model_repo, default_revision, et) = parse_repo_string(repo_string)?;
-        assert_eq!(model_repo, "jinaai/jina-embeddings-v2-base-en");
-        assert_eq!(default_revision, "refs/pr/21");
-        assert_eq!(et, EmbedderType::Bert);
-
-        let repo_string = "jinaai/jina-embeddings-v2-base-en:refs/pr/21:Bert";
-        let (model_repo, default_revision, et) = parse_repo_string(repo_string)?;
-        assert_eq!(model_repo, "jinaai/jina-embeddings-v2-base-en");
-        assert_eq!(default_revision, "refs/pr/21");
-        assert_eq!(et, EmbedderType::Bert);
-
-        let illegal_repo_string = "jinaai/jina-embeddings-v2-base-en:refs/pr/21:Bert*";
-        assert!(parse_repo_string(illegal_repo_string).is_err());
+        let _encoder = SentenceTransformer::from_folder(&snapshot_path, EmbedderType::Bert)?;
 
         Ok(())
     }
