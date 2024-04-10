@@ -25,5 +25,5 @@ jobs:
             crates/glowrs-server
 
       - name: Publish glowrs
-        run: (cd crates/glowrs && cargo publish --token ${{ secrets.CRATES_TOKEN }})
+        run: cargo publish -p glowrs --token ${{ secrets.CRATES_TOKEN }}
         if: steps.check-version.outputs.skip-publish != 'true'
