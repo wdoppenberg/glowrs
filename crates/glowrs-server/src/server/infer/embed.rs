@@ -26,10 +26,6 @@ impl EmbeddingsHandler {
             sentence_transformer,
         })
     }
-
-    pub fn get_name(&self) -> String {
-        self.sentence_transformer.get_name()
-    }
 }
 
 impl RequestHandler for EmbeddingsHandler {

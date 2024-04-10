@@ -4,7 +4,6 @@ use candle_nn::VarBuilder;
 use candle_transformers::models::{
     bert::Config as BertConfig, jina_bert::Config as JinaBertConfig,
 };
-use hf_hub::api::sync::ApiRepo;
 use serde::de::DeserializeOwned;
 use tokenizers::Tokenizer;
 
@@ -67,54 +66,10 @@ impl EmbedderModel for JinaBertModel {
     }
 }
 
-pub(crate) fn load_model_and_tokenizer_gen<L>(
-    api: ApiRepo,
-) -> Result<(Box<dyn EmbedderModel>, Tokenizer)>
-where
-    L: LoadableModel,
-{
-    let model_path = api
-        .get("model.safetensors")
-        .context("Model repository is not available or doesn't contain `model.safetensors`.")?;
-
-    let config_path = api
-        .get("config.json")
-        .context("Model repository doesn't contain `config.json`.")?;
-
-    let tokenizer_path = api
-        .get("tokenizer.json")
-        .context("Model repository doesn't contain `tokenizer.json`.")?;
-
-    let tokenizer = Tokenizer::from_file(tokenizer_path).map_err(Error::msg)?;
-    let config_str = std::fs::read_to_string(config_path)?;
-
-    let cfg = serde_json::from_str(&config_str)
-		.context(
-			"Failed to deserialize config.json. Make sure you have the right EmbedderModel implementation."
-		)?;
-
-    let vb = unsafe { VarBuilder::from_mmaped_safetensors(&[model_path], DType::F32, &DEVICE)? };
-
-    let model = L::load_model(vb, &cfg).context("Something went wrong while loading the model.")?;
-
-    Ok((model, tokenizer))
-}
-
 #[derive(Debug, PartialEq)]
 pub enum EmbedderType {
     Bert,
     JinaBert,
-}
-
-pub(crate) fn load_model_and_tokenizer(
-    api: ApiRepo,
-    embedder_type: EmbedderType,
-) -> Result<(Box<dyn EmbedderModel>, Tokenizer)> {
-    let (model, tokenizer) = match embedder_type {
-        EmbedderType::Bert => load_model_and_tokenizer_gen::<BertModel>(api)?,
-        EmbedderType::JinaBert => load_model_and_tokenizer_gen::<JinaBertModel>(api)?,
-    };
-    Ok((model, tokenizer))
 }
 
 pub(crate) fn encode_batch_with_usage(
@@ -169,24 +124,4 @@ pub(crate) fn encode_batch(
 ) -> Result<Tensor> {
     let (out, _) = encode_batch_with_usage(model, tokenizer, sentences, normalize)?;
     Ok(out)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use hf_hub::api::sync::Api;
-    use hf_hub::{Repo, RepoType};
-
-    // TODO: Move to integration tests
-    #[test]
-    fn test_load_sentence_transformers() {
-        let repo_name = "sentence-transformers/all-MiniLM-L6-v2";
-        let revision = "refs/pr/21";
-        let api = Api::new().unwrap().repo(Repo::with_revision(
-            repo_name.into(),
-            RepoType::Model,
-            revision.into(),
-        ));
-        let (_model, _tokenizer) = load_model_and_tokenizer_gen::<BertModel>(api).unwrap();
-    }
 }
