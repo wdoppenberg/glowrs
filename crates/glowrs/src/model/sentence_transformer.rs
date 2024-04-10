@@ -220,14 +220,23 @@ mod test {
 
         Ok(())
     }
-    
+
     #[test]
     fn test_from_folder() -> Result<()> {
-        // TODO: Expand user (tilde)
-        let path = Path::new("~/.cache/huggingface/hub/models--sentence-transformers--all-MiniLM-L6-v2/snapshots/0b6dc4ef7c29dba0d2e99a5db0c855c3102310d8/");
-        
-        let _encoder = SentenceTransformer::from_folder(&path, EmbedderType::Bert)?;
-        
+        let _ = SentenceTransformer::from_repo_string("sentence-transformers/all-MiniLM-L6-v2")?;
+
+        let home = std::env::var("HOME").unwrap();
+
+        let snapshots_path_str = format!("{home}/.cache/huggingface/hub/models--sentence-transformers--all-MiniLM-L6-v2/snapshots/");
+        // find first snapshot (folder)
+        let snapshot_path = std::fs::read_dir(snapshots_path_str)?
+            .next()
+            .unwrap()?
+            .path();
+        let path = Path::new(&snapshot_path);
+
+        let _encoder = SentenceTransformer::from_folder(path, EmbedderType::Bert)?;
+
         Ok(())
     }
 }

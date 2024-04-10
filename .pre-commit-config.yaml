@@ -1,0 +1,30 @@
+repos:
+  - repo: local
+    hooks:
+      - id: rustfmt
+        name: rustfmt
+        entry: cargo fmt -- --check
+        language: system
+        types: [rust]
+        pass_filenames: false
+
+      - id: clippy
+        name: clippy
+        entry: cargo clippy
+        language: system
+        types: [rust]
+        pass_filenames: false
+
+      - id: cargo-check
+        name: cargo-check
+        entry: cargo check
+        language: system
+        types: [rust]
+        pass_filenames: false
+
+      - id: cargo-publish-dry-run
+        name: cargo-publish-dry-run
+        entry: cargo publish -p glowrs --dry-run
+        language: system
+        types: [rust]
+        pass_filenames: false
