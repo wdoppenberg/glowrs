@@ -225,17 +225,15 @@ mod test {
     fn test_from_folder() -> Result<()> {
         let _ = SentenceTransformer::from_repo_string("sentence-transformers/all-MiniLM-L6-v2")?;
 
-        let home = std::env::var("HOME").unwrap();
+        let home_dir = dirs::home_dir().unwrap();
+        let snapshots_path = home_dir.join(
+            ".cache/huggingface/hub/models--sentence-transformers--all-MiniLM-L6-v2/snapshots/",
+        );
 
-        let snapshots_path_str = format!("{home}/.cache/huggingface/hub/models--sentence-transformers--all-MiniLM-L6-v2/snapshots/");
         // find first snapshot (folder)
-        let snapshot_path = std::fs::read_dir(snapshots_path_str)?
-            .next()
-            .unwrap()?
-            .path();
-        let path = Path::new(&snapshot_path);
+        let snapshot_path = std::fs::read_dir(snapshots_path)?.next().unwrap()?.path();
 
-        let _encoder = SentenceTransformer::from_folder(path, EmbedderType::Bert)?;
+        let _encoder = SentenceTransformer::from_folder(&snapshot_path, EmbedderType::Bert)?;
 
         Ok(())
     }
