@@ -2,6 +2,7 @@
 
 pub mod model;
 
+pub use model::embedder::EmbedderType;
 pub use model::sentence_transformer::SentenceTransformer;
 use serde::{Deserialize, Serialize};
 

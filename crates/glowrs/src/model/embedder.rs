@@ -69,6 +69,10 @@ impl EmbedderModel for JinaBertModel {
 }
 
 /// Represents the type of embedding algorithm used by the embedding model.
+///
+/// The `Bert` variant represents the original BERT model, while the `JinaBert` variant represents
+/// the Jina BERT model. This enum is used to determine the configuration and model instance to
+/// use when loading the model.
 #[derive(Debug, PartialEq)]
 pub enum EmbedderType {
     Bert,
