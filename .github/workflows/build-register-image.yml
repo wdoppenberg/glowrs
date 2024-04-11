@@ -13,9 +13,11 @@ jobs:
       - name: Check current version
         id: check-version
         run: |
-          LOCAL_VERSION=$(grep -e '^version\s*=\s*"' Cargo.toml | head -1 | cut -d '"' -f2)
-          echo "::set-output name=local-version::$LOCAL_VERSION"
-
+          echo "LOCAL_VERSION=$(grep -e '^version\s*=\s*"' Cargo.toml | head -1 | cut -d '"' -f2)" >> $GITHUB_ENV
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
         with:
@@ -30,6 +32,6 @@ jobs:
           push: true
           platforms: linux/amd64,linux/arm64
           tags: |
-            ghcr.io/wdoppenberg/glowrs-server:${{ steps.check-version.outputs.local-version }}-cpu
+            ghcr.io/wdoppenberg/glowrs-server:${{ env.LOCAL_VERSION }}-cpu
             ghcr.io/wdoppenberg/glowrs-server:latest
 
