@@ -46,7 +46,7 @@ impl SentenceTransformer {
         Self { model, tokenizer }
     }
 
-    /// Load a SentenceTransformer model from the Hugging Face Hub.
+    /// Load a [`SentenceTransformer`] model from the Hugging Face Hub.
     ///
     /// ## Example
     ///
@@ -138,6 +138,24 @@ impl SentenceTransformer {
         }
     }
 
+    /// Load a [`SentenceTransformer`] model from a folder containing the model, config, and tokenizer
+    /// json files. The model should be saved in the SafeTensors format. Often, these folders
+    /// are created by huggingface libraries when pulling a model from the hub, and are saved in
+    /// the `~/.cache/huggingface/hub/models` directory.
+    ///
+    /// ## Example
+    ///
+    /// ```no_run
+    /// use glowrs::{SentenceTransformer, EmbedderType};
+    /// use std::path::Path;
+    ///
+    /// # fn main() -> anyhow::Result<()> {
+    /// let path = Path::new("path/to/folder");
+    ///
+    /// let encoder = SentenceTransformer::from_folder(path, EmbedderType::Bert)?;
+    ///
+    /// # Ok(())
+    /// # }
     pub fn from_folder(folder_path: &Path, embedder_type: EmbedderType) -> Result<Self> {
         // Construct PathBuf objects for model, config, and tokenizer json files
         let model_path = folder_path.join("model.safetensors");

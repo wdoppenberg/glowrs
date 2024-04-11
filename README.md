@@ -3,7 +3,7 @@
 # Library Usage
 
  
-The `glowrs` library provides an easy and familiar interface to use pre-trained models for embeddings and sentence similarity.
+`glowrs` provides an easy and familiar interface to use pre-trained models for embeddings and sentence similarity.
  
 ## Example
 
@@ -32,7 +32,7 @@ fn main() {
 
 # Server Usage
 
-`glowrs` also provides a web server for sentence embedding inference. Uses
+`glowrs-server`  provides a web server for sentence embedding inference. Uses
 [`candle`](https://github.com/huggingface/candle) as Tensor framework. It currently supports Bert type models hosted on Huggingface, such as those provided by 
 [`sentence-transformers`](https://huggingface.co/sentence-transformers), 
 [`Tom Aarsen`](https://huggingface.co/tomaarsen), or [`Jina AI`](https://huggingface.co/jinaai), as long as they provide safetensors model weights.
@@ -41,27 +41,27 @@ fn main() {
 Example usage with the `jina-embeddings-v2-base-en` model:
 
 ```bash
-cargo run --bin server --release -- --model-repo jinaai/jina-embeddings-v2-base-en
+cargo run --bin glowrs-server --release -- --model-repo jinaai/jina-embeddings-v2-base-en
 ```
 
 If you want to use a certain revision of the model, you can append it to the repository name like so.
 
 ```bash
-cargo run --bin server --release -- --model-repo jinaai/jina-embeddings-v2-base-en:main
+cargo run --bin glowrs-server --release -- --model-repo jinaai/jina-embeddings-v2-base-en:main
 ```
 
 The `SentenceTransformer` will attempt to infer the model type from the model name. If it fails, you can specify the model type like so:
 
 ```bash
-cargo run --bin server --release -- --model-repo jinaai/jina-embeddings-v2-base-en:main:bert
+cargo run --bin glowrs-server --release -- --model-repo jinaai/jina-embeddings-v2-base-en:main:bert
 ```
 
 Currently `bert` and `jinabert` are supported.
 
-If you want to run multiple models, you can run multiple instances of the server with different model repos.
+If you want to run multiple models, you can run multiple instances of the glowrs-server with different model repos.
 
 ```bash
-cargo run --bin server --release -- --model-repo jinaai/jina-embeddings-v2-base-en sentence-transformers/paraphrase-multilingual-mpnet-base-v2
+cargo run --bin glowrs-server --release -- --model-repo jinaai/jina-embeddings-v2-base-en sentence-transformers/paraphrase-multilingual-mpnet-base-v2
 ```
 
 **Warning:** This is not supported with `metal` acceleration for now. 
@@ -69,7 +69,7 @@ cargo run --bin server --release -- --model-repo jinaai/jina-embeddings-v2-base-
 ### Instructions:
 
 ```shell
-Usage: server [OPTIONS]
+Usage: glowrs-server [OPTIONS]
 
 Options:
   -m, --model-repo <MODEL_REPO>  
@@ -82,6 +82,15 @@ Options:
 * `metal`: Compile with Metal acceleration
 * `cuda`: Compile with CUDA acceleration
 * `accelerate`: Compile with Accelerate framework acceleration (CPU)
+
+## Docker Usage
+
+For now the docker image only supports CPU on x86 and arm64. 
+
+```shell
+docker run -p 3000:3000 ghcr.io/wdoppenberg/glowrs-server:latest --model-repo <MODEL_REPO>
+```
+
 
 ## Features
 

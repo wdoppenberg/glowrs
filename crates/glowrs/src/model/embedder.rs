@@ -14,6 +14,7 @@ use crate::model::device::DEVICE;
 use crate::model::utils::normalize_l2;
 use crate::{Sentences, Usage};
 
+/// Trait for loadable models.
 pub trait LoadableModel: Sized {
     type Config: DeserializeOwned;
     fn load_model(vb: VarBuilder, cfg: &Self::Config) -> Result<Box<dyn EmbedderModel>>;
@@ -21,6 +22,7 @@ pub trait LoadableModel: Sized {
     fn empty_model() -> Result<Box<dyn EmbedderModel>>;
 }
 
+/// Trait for embedding models
 pub trait EmbedderModel: Send + Sync {
     fn inner_forward(&self, token_ids: &Tensor) -> Result<Tensor>;
 }
@@ -66,12 +68,35 @@ impl EmbedderModel for JinaBertModel {
     }
 }
 
+/// Represents the type of embedding algorithm used by the embedding model.
+///
+/// The `Bert` variant represents the original BERT model, while the `JinaBert` variant represents
+/// the Jina BERT model. This enum is used to determine the configuration and model instance to
+/// use when loading the model.
 #[derive(Debug, PartialEq)]
 pub enum EmbedderType {
     Bert,
     JinaBert,
 }
 
+/// Encodes a batch of sentences using an embedder model and a tokenizer,
+/// and returns the embeddings along with the usage statistics.
+///
+/// # Arguments
+///
+/// * `model` - A reference to a `dyn EmbedderModel` trait object.
+/// * `tokenizer` - A reference to a `Tokenizer`.
+/// * `sentences` - A collection of sentences to encode.
+/// * `normalize` - A boolean flag indicating whether to normalize the embeddings or not.
+///
+/// # Returns
+///
+/// Returns a tuple containing the embeddings as a `Tensor` and the usage statistics as a `Usage` struct.
+///
+/// # Errors
+///
+/// Returns an error if there is any failure during the encoding process.
+///
 pub(crate) fn encode_batch_with_usage(
     model: &dyn EmbedderModel,
     tokenizer: &Tokenizer,
@@ -116,6 +141,16 @@ pub(crate) fn encode_batch_with_usage(
     Ok((embeddings, usage))
 }
 
+/// Encodes a batch of sentences using the given `model` and `tokenizer`.
+///
+/// # Arguments
+/// * `model` - A reference to the embedding model to use.
+/// * `tokenizer` - A reference to the tokenizer to use.
+/// * `sentences` - The sentences to encode.
+/// * `normalize` - A flag indicating whether to normalize the embeddings.
+///
+/// # Returns
+/// * `Result<Tensor>` - A result containing the encoded batch of sentences.
 pub(crate) fn encode_batch(
     model: &dyn EmbedderModel,
     tokenizer: &Tokenizer,

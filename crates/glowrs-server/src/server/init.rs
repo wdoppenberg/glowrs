@@ -1,13 +1,16 @@
+use std::sync::Arc;
+use std::time::Duration;
+
 use axum::extract::MatchedPath;
 use axum::http::Request;
 use axum::routing::{get, post};
 use axum::Router;
-use clap::Args;
-use std::sync::Arc;
-use std::time::Duration;
-use thiserror::__private::AsDisplay;
+
 use tower_http::timeout::TimeoutLayer;
 use tower_http::trace::TraceLayer;
+
+use clap::Args;
+use thiserror::__private::AsDisplay;
 use tracing::{info_span, Span};
 
 use crate::server::routes::models::get_model;
@@ -37,7 +40,7 @@ pub fn init_router(args: &RouterArgs) -> anyhow::Result<Router> {
                         .extensions()
                         .get::<MatchedPath>()
                         .map(MatchedPath::as_str);
-                    tracing::debug!("{}", request.uri().as_display());
+                    tracing::trace!("{}", request.uri().as_display());
 
                     info_span!(
                         "http_request",
