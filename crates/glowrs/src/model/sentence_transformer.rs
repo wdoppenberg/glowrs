@@ -145,7 +145,7 @@ impl SentenceTransformer {
     ///
     /// ## Example
     ///
-    /// ```rust
+    /// ```no_run
     /// use glowrs::{SentenceTransformer, EmbedderType};
     /// use std::path::Path;
     ///
