@@ -27,7 +27,7 @@ impl ServerState {
         let map = model_repos
             .into_iter()
             .filter_map(|model_repo| {
-                let (name, _, _) = parse_repo_string(&model_repo).ok()?;
+                let (name, _) = parse_repo_string(&model_repo).ok()?;
                 let handler = EmbeddingsHandler::from_repo_string(&model_repo).ok()?;
                 let executor = DedicatedExecutor::new(handler).ok()?;
                 let client = EmbeddingsClient::new(&executor);

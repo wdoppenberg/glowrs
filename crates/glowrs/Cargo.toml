@@ -34,3 +34,4 @@ cuda = ["candle-core/cuda", "candle-nn/cuda", "candle-transformers/cuda"]
 
 [dev-dependencies]
 dirs = "5.0.1"
+tempfile = "3.10.1"
