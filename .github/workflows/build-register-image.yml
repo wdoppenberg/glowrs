@@ -13,15 +13,10 @@ jobs:
       - name: Check current version
         id: check-version
         run: |
-          LAST_PUBLISHED_VERSION=$(cargo search glowrs --limit 1 | awk '{print $3}' | tr -d '"')
-          LOCAL_VERSION=$(grep -e '^version\s*=\s*"' crates/glowrs/Cargo.toml | head -1 | cut -d '"' -f2)
-          if [ "$LAST_PUBLISHED_VERSION" == "$LOCAL_VERSION" ]; then
-            echo "::set-output name=skip-publish::true"
-          fi
+          LOCAL_VERSION=$(grep -e '^version\s*=\s*"' crates/glowrs-server/Cargo.toml | head -1 | cut -d '"' -f2)
           echo "::set-output name=local-version::$LOCAL_VERSION"
 
       - name: Login to GitHub Container Registry
-        if: steps.check-version.outputs.skip-publish != 'true'
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -30,12 +25,11 @@ jobs:
 
       - name: Build & Publish Container
         uses: docker/build-push-action@v5
-        if: steps.check-version.outputs.skip-publish != 'true'
         with:
           context: .
           push: true
           platforms: linux/amd64,linux/arm64
           tags: |
-            ghcr.io/wdoppenberg/glowrs:${{ steps.check-version.outputs.local-version }}-cpu
-            ghcr.io/wdoppenberg/glowrs:latest
+            ghcr.io/wdoppenberg/glowrs-server:${{ steps.check-version.outputs.local-version }}-cpu
+            ghcr.io/wdoppenberg/glowrs-server:latest
 

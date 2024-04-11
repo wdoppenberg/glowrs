@@ -83,6 +83,15 @@ Options:
 * `cuda`: Compile with CUDA acceleration
 * `accelerate`: Compile with Accelerate framework acceleration (CPU)
 
+## Docker Usage
+
+For now the docker image only supports CPU on x86 and arm64. 
+
+```shell
+docker run -p 3000:3000 ghcr.io/wdoppenberg/glowrs-server:latest --model-repo <MODEL_REPO>
+```
+
+
 ## Features
 
 - [X] OpenAI API compatible (`/v1/embeddings`) REST API endpoint
