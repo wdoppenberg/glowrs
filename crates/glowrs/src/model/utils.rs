@@ -1,6 +1,10 @@
 use crate::model::embedder::EmbedderType;
 use candle_core::Tensor;
 
+pub fn normalize_l1(v: &Tensor) -> candle_core::Result<Tensor> {
+    v.broadcast_div(&v.abs()?.sum_keepdim(1)?)
+}
+
 pub fn normalize_l2(v: &Tensor) -> candle_core::Result<Tensor> {
     v.broadcast_div(&v.sqr()?.sum_keepdim(1)?.sqrt()?)
 }
@@ -55,8 +59,8 @@ pub fn parse_repo_string(repo_string: &str) -> anyhow::Result<(&str, &str, Embed
 
 #[cfg(test)]
 mod test {
+    use super::*;
     use crate::model::embedder::EmbedderType;
-    use crate::model::utils::parse_repo_string;
 
     #[test]
     fn test_parse_repo_string() -> anyhow::Result<()> {
