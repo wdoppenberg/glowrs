@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - master
+
 jobs:
   build-and-register:
     runs-on: ubuntu-20.04
@@ -28,8 +29,10 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build & Publish Container
+        uses: docker/build-push-action@v5
         if: steps.check-version.outputs.skip-publish != 'true'
-        run: |
-          LOCAL_VERSION=$(grep -e '^version\s*=\s*"' crates/glowrs/Cargo.toml | head -1 | cut -d '"' -f2)
-          docker build -t "ghcr.io/wdoppenberg/glowrs:$LOCAL_VERSION-cpu" .
-          docker push "ghcr.io/wdoppenberg/glowrs:$LOCAL_VERSION-cpu"
+        with:
+          context: .
+          push: true
+          tags: ghcr.io/wdoppenberg/glowrs:${{ steps.check-version.outputs.local-version }}-cpu
+
