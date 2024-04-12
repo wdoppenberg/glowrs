@@ -21,7 +21,7 @@ pub struct App {
     #[clap(short, long, default_value = "3000")]
     pub port: u16,
 
-    #[clap(short, long, default_value = "127.0.0.1")]
+    #[clap(long, default_value = "127.0.0.1")]
     pub host: IpAddr,
 }
 
