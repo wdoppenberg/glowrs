@@ -109,7 +109,7 @@ curl -X POST http://localhost:3000/v1/embeddings \
   -H "Content-Type: application/json" \
   -d '{
     "input": ["The food was delicious and the waiter...", "was too"], 
-    "model": "jina-embeddings-v2-base-en",
+    "model": "sentence-transformers/all-MiniLM-L6-v2",
     "encoding_format": "float"
   }'
 ```
