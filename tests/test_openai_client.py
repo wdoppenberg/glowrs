@@ -11,7 +11,7 @@ client = OpenAI(
 start = time()
 print(client.embeddings.create(
 	input=["This is a sentence that requires an model"] * 50,
-	model="sentence-transformers/all-MiniLM-L6-v2"
+	model="tomaarsen/all-MiniLM-L6-v2"
 ))
 
 print(f"Done in {time() - start}")

@@ -1,0 +1,56 @@
+ARG PACKAGE="glowrs-server"
+
+# Build container
+FROM nvidia/cuda:12.4.1-devel-ubuntu22.04 AS cuda-base
+
+# Installing rust and cargo chef
+RUN apt-get update && \
+    apt-get install -y curl openssl libssl-dev ca-certificates pkg-config && \
+    rm -rf /var/lib/apt/lists/* &&\
+    curl https://sh.rustup.rs -sSf | sh -s -- -y
+
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+# Install cargo-chef
+RUN cargo install cargo-chef
+
+WORKDIR /build
+
+FROM cuda-base AS planner
+COPY . .
+RUN cargo chef prepare  --recipe-path recipe.json
+
+FROM cuda-base AS builder
+COPY --from=planner /build/recipe.json recipe.json
+
+ENV NVIDIA_VISIBLE_DEVICES all
+ENV NVIDIA_DRIVER_CAPABILITIES video,compute,utility
+
+# Build dependencies - this is the caching Docker layer!
+RUN cargo chef cook --release --recipe-path recipe.json
+# Build application
+ARG PACKAGE
+
+COPY . .
+
+RUN cargo build --release --bin $PACKAGE --features cuda
+
+# Final image
+FROM nvidia/cuda:12.4.1-runtime-ubuntu22.04
+
+# Installing nativetls dependencies
+RUN apt-get update && \
+	apt-get install -y openssl libssl-dev ca-certificates && \
+	rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+ARG PACKAGE
+COPY --from=builder /build/target/release/$PACKAGE  /app/$PACKAGE
+
+HEALTHCHECK --interval=30s --start-period=10s --retries=3 CMD bash -c ':> /dev/tcp/0.0.0.0/3000' || exit 1
+
+ENV RUST_LOG="glowrs=debug,server=debug,tower_http=debug,axum::rejection=trace"
+
+# Running
+EXPOSE 3000
+ENTRYPOINT ["./glowrs-server", "--host", "0.0.0.0"]
