@@ -1,9 +1,10 @@
 use anyhow::{Context, Error, Result};
-use candle_core::{Module, Tensor};
+use candle_core::{DType, Module, Tensor};
 use candle_nn::VarBuilder;
 use candle_transformers::models::{
     bert::Config as BertConfig, jina_bert::Config as JinaBertConfig,
 };
+use std::path::Path;
 use tokenizers::Tokenizer;
 
 // Re-exports
@@ -46,10 +47,16 @@ pub(crate) fn parse_config(config_str: &str) -> Result<ModelConfig> {
 }
 
 /// Load models.
-pub(crate) fn load_model(vb: VarBuilder, cfg: &ModelConfig) -> Result<Box<dyn EmbedderModel>> {
-    match cfg {
-        ModelConfig::Bert(cfg) => Ok(Box::new(BertModel::load(vb, cfg)?)),
-        ModelConfig::JinaBert(cfg) => Ok(Box::new(JinaBertModel::new(vb, cfg)?)),
+pub(crate) fn load_model(model_path: &Path, config_path: &Path) -> Result<Box<dyn EmbedderModel>> {
+    let config_str = std::fs::read_to_string(config_path)?;
+    let model_cfg = parse_config(&config_str)?;
+
+    // TODO: Make DType configurable
+    let vb = unsafe { VarBuilder::from_mmaped_safetensors(&[model_path], DType::F32, &DEVICE)? };
+
+    match model_cfg {
+        ModelConfig::Bert(cfg) => Ok(Box::new(BertModel::load(vb, &cfg)?)),
+        ModelConfig::JinaBert(cfg) => Ok(Box::new(JinaBertModel::new(vb, &cfg)?)),
     }
 }
 

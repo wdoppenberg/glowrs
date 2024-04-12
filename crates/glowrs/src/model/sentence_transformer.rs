@@ -1,15 +1,11 @@
-use crate::model::device::DEVICE;
 use anyhow::{Context, Error, Result};
-use candle_core::{DType, Tensor};
-use candle_nn::VarBuilder;
+use candle_core::Tensor;
 use hf_hub::api::sync::{Api, ApiRepo};
 use hf_hub::{Repo, RepoType};
 use std::path::Path;
 use tokenizers::tokenizer::Tokenizer;
 
-use crate::model::embedder::{
-    encode_batch, encode_batch_with_usage, load_model, parse_config, EmbedderModel,
-};
+use crate::model::embedder::{encode_batch, encode_batch_with_usage, load_model, EmbedderModel};
 use crate::model::utils;
 use crate::Sentences;
 use crate::Usage;
@@ -95,14 +91,8 @@ impl SentenceTransformer {
     pub fn from_path(model_path: &Path, config_path: &Path, tokenizer_path: &Path) -> Result<Self> {
         let tokenizer = Tokenizer::from_file(tokenizer_path).map_err(Error::msg)?;
 
-        let config_str = std::fs::read_to_string(config_path)?;
-        let cfg = parse_config(&config_str)?;
-
-        let vb =
-            unsafe { VarBuilder::from_mmaped_safetensors(&[model_path], DType::F32, &DEVICE)? };
-
-        let model =
-            load_model(vb, &cfg).context("Something went wrong while loading the model.")?;
+        let model = load_model(model_path, config_path)
+            .context("Something went wrong while loading the model.")?;
 
         Ok(Self::new(model, tokenizer))
     }
