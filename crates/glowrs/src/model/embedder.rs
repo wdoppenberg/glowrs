@@ -4,6 +4,7 @@ use candle_nn::VarBuilder;
 use candle_transformers::models::{
     bert::Config as BertConfig, jina_bert::Config as JinaBertConfig,
 };
+use std::ops::Deref;
 use std::path::Path;
 use tokenizers::Tokenizer;
 
@@ -14,6 +15,9 @@ use serde::Deserialize;
 use crate::model::device::DEVICE;
 use crate::model::utils::normalize_l2;
 use crate::{Sentences, Usage};
+
+#[cfg(test)]
+use candle_nn::VarMap;
 
 pub(crate) enum ModelConfig {
     Bert(BertConfig),
@@ -29,35 +33,54 @@ pub(crate) fn parse_config(config_str: &str) -> Result<ModelConfig> {
     let base_config: BaseModelConfig = serde_json::from_str(config_str)?;
 
     let config = match base_config.architectures {
-        Some(arch) => match arch.first().map(String::as_str) {
-            Some("BertModel") => {
-                let config: BertConfig = serde_json::from_str(config_str)?;
-                ModelConfig::Bert(config)
+        Some(arch) => {
+            if arch.is_empty() {
+                return Err(Error::msg("No architectures found"));
             }
-            Some("JinaBertForMaskedLM") => {
-                let config: JinaBertConfig = serde_json::from_str(config_str)?;
-                ModelConfig::JinaBert(config)
+
+            if arch.len() > 1 {
+                return Err(Error::msg("Multiple architectures not supported"));
             }
-            _ => return Err(Error::msg("Invalid model architecture")),
-        },
+
+            match arch.first().map(String::as_str) {
+                Some("BertModel") => {
+                    let config: BertConfig = serde_json::from_str(config_str)?;
+                    ModelConfig::Bert(config)
+                }
+                Some("JinaBertForMaskedLM") => {
+                    let config: JinaBertConfig = serde_json::from_str(config_str)?;
+                    ModelConfig::JinaBert(config)
+                }
+                _ => return Err(Error::msg("Invalid model architecture")),
+            }
+        }
         None => return Err(Error::msg("Model architecture not found")),
     };
 
     Ok(config)
 }
 
+pub(crate) fn load_model<T>(vb: VarBuilder, model_config: ModelConfig) -> Result<T>
+where
+    T: Deref<Target = dyn EmbedderModel> + From<Box<dyn EmbedderModel>> + AsRef<dyn EmbedderModel>,
+{
+    match model_config {
+        ModelConfig::Bert(cfg) => Ok(T::from(Box::new(BertModel::load(vb, &cfg)?))),
+        ModelConfig::JinaBert(cfg) => Ok(T::from(Box::new(JinaBertModel::new(vb, &cfg)?))),
+    }
+}
+
 /// Load models.
-pub(crate) fn load_model(model_path: &Path, config_path: &Path) -> Result<Box<dyn EmbedderModel>> {
+pub(crate) fn load_pretrained_model<T>(model_path: &Path, config_path: &Path) -> Result<T>
+where
+    T: Deref<Target = dyn EmbedderModel> + From<Box<dyn EmbedderModel>> + AsRef<dyn EmbedderModel>,
+{
     let config_str = std::fs::read_to_string(config_path)?;
-    let model_cfg = parse_config(&config_str)?;
+    let model_config = parse_config(&config_str)?;
 
     // TODO: Make DType configurable
     let vb = unsafe { VarBuilder::from_mmaped_safetensors(&[model_path], DType::F32, &DEVICE)? };
-
-    match model_cfg {
-        ModelConfig::Bert(cfg) => Ok(Box::new(BertModel::load(vb, &cfg)?)),
-        ModelConfig::JinaBert(cfg) => Ok(Box::new(JinaBertModel::new(vb, &cfg)?)),
-    }
+    load_model::<T>(vb, model_config)
 }
 
 /// Trait for embedding models
@@ -163,46 +186,37 @@ pub(crate) fn encode_batch(
 }
 
 #[cfg(test)]
+pub(crate) fn load_random_model<T>(model_config: ModelConfig) -> Result<T>
+where
+    T: Deref<Target = dyn EmbedderModel> + From<Box<dyn EmbedderModel>> + AsRef<dyn EmbedderModel>,
+{
+    let varmap = VarMap::new();
+    let vb = VarBuilder::from_varmap(&varmap, DType::F32, &DEVICE);
+
+    load_model::<T>(vb, model_config)
+}
+
+#[cfg(test)]
+pub(crate) fn load_zeros_model<T>(model_config: ModelConfig) -> Result<T>
+where
+    T: Deref<Target = dyn EmbedderModel> + From<Box<dyn EmbedderModel>> + AsRef<dyn EmbedderModel>,
+{
+    // TODO: Make DType configurable
+    let vb = VarBuilder::zeros(DType::F32, &DEVICE);
+    load_model::<T>(vb, model_config)
+}
+
+#[cfg(test)]
 mod test {
     use super::*;
-    use std::io::Write;
-    use tempfile::NamedTempFile;
+
+    const BERT_CONFIG_PATH: &str = "tests/fixtures/all-MiniLM-L6-v2/config.json";
+    const JINABERT_CONFIG_PATH: &str = "tests/fixtures/jina-embeddings-v2-base-en/config.json";
 
     #[test]
     fn test_parse_config_bert() -> Result<()> {
-        let config = r#"
-        {
-            "_name_or_path": "sentence-transformers/all-MiniLM-L6-v2",
-            "architectures": [
-                "BertModel"
-            ],
-            "attention_probs_dropout_prob": 0.1,
-            "classifier_dropout": null,
-            "gradient_checkpointing": false,
-            "hidden_act": "gelu",
-            "hidden_dropout_prob": 0.1,
-            "hidden_size": 384,
-            "initializer_range": 0.02,
-            "intermediate_size": 1536,
-            "layer_norm_eps": 1e-12,
-            "max_position_embeddings": 512,
-            "model_type": "bert",
-            "num_attention_heads": 12,
-            "num_hidden_layers": 6,
-            "pad_token_id": 0,
-            "position_embedding_type": "absolute",
-            "torch_dtype": "float32",
-            "transformers_version": "4.36.2",
-            "type_vocab_size": 2,
-            "use_cache": true,
-            "vocab_size": 30522
-        }
-        "#;
-
-        let mut file = NamedTempFile::new()?;
-        writeln!(file, "{}", config)?;
-
-        let config_str = std::fs::read_to_string(file.path())?;
+        let path = Path::new(BERT_CONFIG_PATH);
+        let config_str = std::fs::read_to_string(path)?;
 
         let config = parse_config(&config_str)?;
 
@@ -216,48 +230,9 @@ mod test {
 
     #[test]
     fn test_parse_config_jinabert() -> Result<()> {
-        let config = r#"
-        {
-            "_name_or_path": "jinaai/jina-bert-implementation",
-            "model_max_length": 8192,
-            "architectures": [
-                "JinaBertForMaskedLM"
-            ],
-            "attention_probs_dropout_prob": 0.0,
-            "auto_map": {
-                "AutoConfig": "jinaai/jina-bert-implementation--configuration_bert.JinaBertConfig",
-                "AutoModelForMaskedLM": "jinaai/jina-bert-implementation--modeling_bert.JinaBertForMaskedLM",
-                "AutoModel": "jinaai/jina-bert-implementation--modeling_bert.JinaBertModel",
-                "AutoModelForSequenceClassification": "jinaai/jina-bert-implementation--modeling_bert.JinaBertForSequenceClassification"
-            },
-            "classifier_dropout": null,
-            "gradient_checkpointing": false,
-            "hidden_act": "gelu",
-            "hidden_dropout_prob": 0.1,
-            "hidden_size": 768,
-            "initializer_range": 0.02,
-            "intermediate_size": 3072,
-            "layer_norm_eps": 1e-12,
-            "max_position_embeddings": 8192,
-            "model_type": "bert",
-            "num_attention_heads": 12,
-            "num_hidden_layers": 12,
-            "pad_token_id": 0,
-            "position_embedding_type": "alibi",
-            "torch_dtype": "float32",
-            "transformers_version": "4.26.0",
-            "type_vocab_size": 2,
-            "use_cache": true,
-            "vocab_size": 30528,
-            "feed_forward_type": "geglu",
-            "emb_pooler": "mean"
-        }
-        "#;
+        let path = Path::new(JINABERT_CONFIG_PATH);
 
-        let mut file = NamedTempFile::new()?;
-        writeln!(file, "{}", config)?;
-
-        let config_str = std::fs::read_to_string(file.path())?;
+        let config_str = std::fs::read_to_string(path)?;
 
         let config = parse_config(&config_str)?;
 
@@ -265,6 +240,86 @@ mod test {
             ModelConfig::JinaBert(_) => {}
             _ => panic!("Invalid config type"),
         }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_zeros_model_bert() -> Result<()> {
+        let path = Path::new(BERT_CONFIG_PATH);
+
+        let config_str = std::fs::read_to_string(path)?;
+        let config = parse_config(&config_str)?;
+
+        let model: Box<dyn EmbedderModel> = load_zeros_model(config)?;
+
+        let token_ids = Tensor::zeros(&[1, 128], DType::U32, &DEVICE)?;
+
+        let embeddings = model.encode(&token_ids)?;
+
+        let (_n_sentence, out_tokens, _hidden_size) = embeddings.dims3()?;
+
+        assert_eq!(out_tokens, 128);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_zeros_model_jinabert() -> Result<()> {
+        let path = Path::new(JINABERT_CONFIG_PATH);
+
+        let config_str = std::fs::read_to_string(path)?;
+        let config = parse_config(&config_str)?;
+
+        let model: Box<dyn EmbedderModel> = load_zeros_model(config)?;
+
+        let token_ids = Tensor::zeros(&[1, 128], DType::U32, &DEVICE)?;
+
+        let embeddings = model.encode(&token_ids)?;
+
+        let (_n_sentence, out_tokens, _hidden_size) = embeddings.dims3()?;
+
+        assert_eq!(out_tokens, 128);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_random_model_bert() -> Result<()> {
+        let path = Path::new(BERT_CONFIG_PATH);
+
+        let config_str = std::fs::read_to_string(path)?;
+        let config = parse_config(&config_str)?;
+
+        let model: Box<_> = load_random_model(config)?;
+
+        let token_ids = Tensor::zeros(&[1, 128], DType::U32, &DEVICE)?;
+
+        let embeddings = model.encode(&token_ids)?;
+
+        let (_n_sentence, out_tokens, _hidden_size) = embeddings.dims3()?;
+
+        assert_eq!(out_tokens, 128);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_random_model_jinabert() -> Result<()> {
+        let path = Path::new(JINABERT_CONFIG_PATH);
+
+        let config_str = std::fs::read_to_string(path)?;
+        let config = parse_config(&config_str)?;
+
+        let model: Box<dyn EmbedderModel> = load_random_model(config)?;
+
+        let token_ids = Tensor::zeros(&[1, 128], DType::U32, &DEVICE)?;
+
+        let embeddings = model.encode(&token_ids)?;
+
+        let (_n_sentence, out_tokens, _hidden_size) = embeddings.dims3()?;
+
+        assert_eq!(out_tokens, 128);
 
         Ok(())
     }

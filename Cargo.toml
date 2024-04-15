@@ -10,8 +10,14 @@ candle-core = { version = "0.4.1" }
 candle-nn = { version = "0.4.1"}
 candle-transformers = { version = "0.4.1" }
 
+# Enable high optimizations for candle in dev builds
+[profile.dev.package]
+candle-core = { opt-level = 3 }
+candle-nn = { opt-level = 3 }
+candle-transformers = { opt-level = 3 }
+
 
 [workspace.package]
 license-file = "LICENSE"
-version = "0.1.7"
+version = "0.1.8"
 

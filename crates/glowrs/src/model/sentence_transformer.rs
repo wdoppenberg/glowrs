@@ -5,10 +5,15 @@ use hf_hub::{Repo, RepoType};
 use std::path::Path;
 use tokenizers::tokenizer::Tokenizer;
 
-use crate::model::embedder::{encode_batch, encode_batch_with_usage, load_model, EmbedderModel};
+use crate::model::embedder::{
+    encode_batch, encode_batch_with_usage, load_pretrained_model, EmbedderModel,
+};
 use crate::model::utils;
 use crate::Sentences;
 use crate::Usage;
+
+#[cfg(test)]
+use crate::model::embedder::{load_zeros_model, parse_config};
 
 /// The SentenceTransformer struct is the main entry point for using pre-trained models for embeddings and sentence similarity.
 ///
@@ -91,7 +96,7 @@ impl SentenceTransformer {
     pub fn from_path(model_path: &Path, config_path: &Path, tokenizer_path: &Path) -> Result<Self> {
         let tokenizer = Tokenizer::from_file(tokenizer_path).map_err(Error::msg)?;
 
-        let model = load_model(model_path, config_path)
+        let model = load_pretrained_model(model_path, config_path)
             .context("Something went wrong while loading the model.")?;
 
         Ok(Self::new(model, tokenizer))
@@ -128,6 +133,19 @@ impl SentenceTransformer {
         }
     }
 
+    #[cfg(test)]
+    pub(crate) fn test_from_config_json(config_path: &Path, tokenizer_path: &Path) -> Result<Self> {
+        let tokenizer = Tokenizer::from_file(tokenizer_path).map_err(Error::msg)?;
+
+        let config_str = std::fs::read_to_string(config_path)?;
+
+        let model_config = parse_config(&config_str)?;
+
+        let model = load_zeros_model(model_config)?;
+
+        Ok(Self::new(model, tokenizer))
+    }
+
     pub fn encode_batch_with_usage(
         &self,
         sentences: impl Into<Sentences>,
@@ -157,14 +175,14 @@ mod test {
     use super::*;
     use std::time::Instant;
 
-    #[test]
-    fn test_sentence_transformer() -> Result<()> {
-        let start = Instant::now();
+    const BERT_TOKENIZER_PATH: &str = "tests/fixtures/all-MiniLM-L6-v2/tokenizer.json";
+    const BERT_CONFIG_PATH: &str = "tests/fixtures/all-MiniLM-L6-v2/config.json";
 
-        let model_repo = "sentence-transformers/all-MiniLM-L6-v2";
-        let default_revision = "main";
-        let sentence_transformer: SentenceTransformer =
-            SentenceTransformer::from_repo(model_repo, default_revision)?;
+    fn test_sentence_transformer(config_path: &str, tokenizer_path: &str) -> Result<()> {
+        let sentence_transformer: SentenceTransformer = SentenceTransformer::test_from_config_json(
+            Path::new(config_path),
+            Path::new(tokenizer_path),
+        )?;
 
         let sentences = Sentences::from(vec![
             "The cat sits outside",
@@ -177,33 +195,21 @@ mod test {
             "Do you like pizza?",
         ]);
 
-        let model_load_duration = Instant::now() - start;
-        println!("Model loaded in {}ms", model_load_duration.as_millis());
-
+        let start = Instant::now();
         let embeddings = sentence_transformer.encode_batch(sentences, true)?;
 
         println!("Pooled embeddings {:?}", embeddings.shape());
         println!(
             "Inference done in {}ms",
-            (Instant::now() - start - model_load_duration).as_millis()
+            (Instant::now() - start).as_millis()
         );
 
         Ok(())
     }
 
     #[test]
-    fn test_from_folder() -> Result<()> {
-        let _ = SentenceTransformer::from_repo_string("sentence-transformers/all-MiniLM-L6-v2")?;
-
-        let home_dir = dirs::home_dir().unwrap();
-        let snapshots_path = home_dir.join(
-            ".cache/huggingface/hub/models--sentence-transformers--all-MiniLM-L6-v2/snapshots/",
-        );
-
-        // find first snapshot (folder)
-        let snapshot_path = std::fs::read_dir(snapshots_path)?.next().unwrap()?.path();
-
-        let _encoder = SentenceTransformer::from_folder(&snapshot_path)?;
+    fn test_sentence_transformer_bert() -> Result<()> {
+        test_sentence_transformer(BERT_CONFIG_PATH, BERT_TOKENIZER_PATH)?;
 
         Ok(())
     }
