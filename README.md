@@ -50,14 +50,6 @@ If you want to use a certain revision of the model, you can append it to the rep
 cargo run --bin glowrs-server --release -- --model-repo jinaai/jina-embeddings-v2-base-en:main
 ```
 
-The `SentenceTransformer` will attempt to infer the model type from the model name. If it fails, you can specify the model type like so:
-
-```bash
-cargo run --bin glowrs-server --release -- --model-repo jinaai/jina-embeddings-v2-base-en:main:bert
-```
-
-Currently `bert` and `jinabert` are supported.
-
 If you want to run multiple models, you can run multiple instances of the glowrs-server with different model repos.
 
 ```bash

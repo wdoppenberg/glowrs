@@ -1,7 +1,6 @@
 #![doc = include_str!("../README.md")]
 
 pub mod model;
-
 pub use model::sentence_transformer::SentenceTransformer;
 use serde::{Deserialize, Serialize};
 
