@@ -19,5 +19,5 @@ candle-transformers = { opt-level = 3 }
 
 [workspace.package]
 license-file = "LICENSE"
-version = "0.1.8"
+version = "0.1.9"
 
