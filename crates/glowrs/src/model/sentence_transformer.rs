@@ -4,16 +4,17 @@ use hf_hub::api::sync::{Api, ApiRepo};
 use hf_hub::{Repo, RepoType};
 use std::path::Path;
 use tokenizers::tokenizer::Tokenizer;
+use tokenizers::EncodeInput;
 
 use crate::model::embedder::{
     encode_batch, encode_batch_with_usage, load_pretrained_model, EmbedderModel,
 };
 use crate::model::utils;
-use crate::Sentences;
 use crate::Usage;
 
 #[cfg(test)]
 use crate::model::embedder::{load_zeros_model, parse_config};
+use crate::model::pooling::PoolingStrategy;
 
 /// The SentenceTransformer struct is the main entry point for using pre-trained models for embeddings and sentence similarity.
 ///
@@ -38,11 +39,16 @@ use crate::model::embedder::{load_zeros_model, parse_config};
 pub struct SentenceTransformer {
     model: Box<dyn EmbedderModel>,
     tokenizer: Tokenizer,
+    pooling_strategy: PoolingStrategy,
 }
 
 impl SentenceTransformer {
     pub fn new(model: Box<dyn EmbedderModel>, tokenizer: Tokenizer) -> Self {
-        Self { model, tokenizer }
+        Self {
+            model,
+            tokenizer,
+            pooling_strategy: PoolingStrategy::Mean,
+        }
     }
 
     /// Load a [`SentenceTransformer`] model from the Hugging Face Hub.
@@ -133,6 +139,26 @@ impl SentenceTransformer {
         }
     }
 
+    /// Set the pooling strategy to use when encoding sentences.
+    ///
+    /// ## Example
+    ///
+    /// ```no_run
+    /// # use glowrs::SentenceTransformer;
+    /// # use glowrs::PoolingStrategy;
+    ///
+    /// # fn main() -> anyhow::Result<()> {
+    /// let encoder = SentenceTransformer::from_repo_string("sentence-transformers/all-MiniLM-L6-v2")?
+    ///    .with_pooling_strategy(PoolingStrategy::Sum);
+    ///
+    /// # Ok(())
+    /// # }
+    ///
+    pub fn with_pooling_strategy(mut self, pooling_strategy: PoolingStrategy) -> Self {
+        self.pooling_strategy = pooling_strategy;
+        self
+    }
+
     #[cfg(test)]
     pub(crate) fn test_from_config_json(config_path: &Path, tokenizer_path: &Path) -> Result<Self> {
         let tokenizer = Tokenizer::from_file(tokenizer_path).map_err(Error::msg)?;
@@ -146,25 +172,33 @@ impl SentenceTransformer {
         Ok(Self::new(model, tokenizer))
     }
 
-    pub fn encode_batch_with_usage(
+    pub fn encode_batch_with_usage<'s, E>(
         &self,
-        sentences: impl Into<Sentences>,
+        sentences: Vec<E>,
         normalize: bool,
-    ) -> Result<(Tensor, Usage)> {
+    ) -> Result<(Tensor, Usage)>
+    where
+        E: Into<EncodeInput<'s>> + Send,
+    {
         let (embeddings, usage) = encode_batch_with_usage(
             self.model.as_ref(),
             &self.tokenizer,
-            sentences.into(),
+            sentences,
+            &self.pooling_strategy,
             normalize,
         )?;
         Ok((embeddings, usage))
     }
 
-    pub fn encode_batch(&self, sentences: impl Into<Sentences>, normalize: bool) -> Result<Tensor> {
+    pub fn encode_batch<'s, E>(&self, sentences: Vec<E>, normalize: bool) -> Result<Tensor>
+    where
+        E: Into<EncodeInput<'s>> + Send,
+    {
         encode_batch(
             self.model.as_ref(),
             &self.tokenizer,
-            sentences.into(),
+            sentences,
+            &self.pooling_strategy,
             normalize,
         )
     }
@@ -184,7 +218,7 @@ mod test {
             Path::new(tokenizer_path),
         )?;
 
-        let sentences = Sentences::from(vec![
+        let sentences = vec![
             "The cat sits outside",
             "A man is playing guitar",
             "I love pasta",
@@ -193,7 +227,7 @@ mod test {
             "A woman watches TV",
             "The new movie is so great",
             "Do you like pizza?",
-        ]);
+        ];
 
         let start = Instant::now();
         let embeddings = sentence_transformer.encode_batch(sentences, true)?;

@@ -7,7 +7,7 @@ use candle_transformers::models::{
 };
 use std::ops::Deref;
 use std::path::Path;
-use tokenizers::Tokenizer;
+use tokenizers::{EncodeInput, Tokenizer};
 
 // Re-exports
 pub use candle_transformers::models::{
@@ -17,8 +17,9 @@ use serde::Deserialize;
 
 use crate::model::device::DEVICE;
 use crate::model::utils::normalize_l2;
-use crate::{Sentences, Usage};
+use crate::Usage;
 
+use crate::model::pooling::{pool_embeddings, PoolingStrategy};
 #[cfg(test)]
 use candle_nn::VarMap;
 
@@ -138,14 +139,18 @@ impl EmbedderModel for DistilBertModel {
 ///
 /// Returns an error if there is any failure during the encoding process.
 ///
-pub(crate) fn encode_batch_with_usage(
+pub(crate) fn encode_batch_with_usage<'s, E>(
     model: &dyn EmbedderModel,
     tokenizer: &Tokenizer,
-    sentences: impl Into<Vec<String>>,
+    sentences: Vec<E>,
+    pooling_strategy: &PoolingStrategy,
     normalize: bool,
-) -> Result<(Tensor, Usage)> {
+) -> Result<(Tensor, Usage)>
+where
+    E: Into<EncodeInput<'s>> + Send,
+{
     let tokens = tokenizer
-        .encode_batch(sentences.into(), true)
+        .encode_batch(sentences, true)
         .map_err(Error::msg)
         .context("Failed to encode batch.")?;
 
@@ -167,11 +172,11 @@ pub(crate) fn encode_batch_with_usage(
 
     // Apply some avg-pooling by taking the mean model value for all tokens (including padding)
     let (_n_sentence, out_tokens, _hidden_size) = embeddings.dims3()?;
-    let embeddings = (embeddings.sum(1)? / (out_tokens as f64))?;
+    let pooled_embeddings = pool_embeddings(&embeddings, pooling_strategy)?;
     let embeddings = if normalize {
-        normalize_l2(&embeddings)?
+        normalize_l2(&pooled_embeddings)?
     } else {
-        embeddings
+        pooled_embeddings
     };
 
     // TODO: Incorrect usage calculation - fix
@@ -192,13 +197,18 @@ pub(crate) fn encode_batch_with_usage(
 ///
 /// # Returns
 /// * `Result<Tensor>` - A result containing the encoded batch of sentences.
-pub(crate) fn encode_batch(
+pub(crate) fn encode_batch<'s, E>(
     model: &dyn EmbedderModel,
     tokenizer: &Tokenizer,
-    sentences: Sentences,
+    sentences: Vec<E>,
+    pooling_strategy: &PoolingStrategy,
     normalize: bool,
-) -> Result<Tensor> {
-    let (out, _) = encode_batch_with_usage(model, tokenizer, sentences, normalize)?;
+) -> Result<Tensor>
+where
+    E: Into<EncodeInput<'s>> + Send,
+{
+    let (out, _) =
+        encode_batch_with_usage(model, tokenizer, sentences, pooling_strategy, normalize)?;
     Ok(out)
 }
 

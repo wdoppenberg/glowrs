@@ -41,7 +41,7 @@ impl RequestHandler for EmbeddingsHandler {
         // Infer embeddings
         let (embeddings, usage) = self
             .sentence_transformer
-            .encode_batch_with_usage(sentences, NORMALIZE)?;
+            .encode_batch_with_usage(sentences.into(), NORMALIZE)?;
 
         let response = EmbeddingsResponse::from_embeddings(embeddings, usage, request.model);
 
