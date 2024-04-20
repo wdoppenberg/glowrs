@@ -1,5 +1,4 @@
 use candle_core::Tensor;
-use glowrs::Sentences;
 use glowrs::Usage;
 use serde::{Deserialize, Serialize};
 
@@ -55,4 +54,38 @@ pub struct InnerEmbeddingsResponse {
     pub object: String,
     pub embedding: Vec<f32>,
     pub index: u32,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(untagged)]
+pub enum Sentences {
+    Single(String),
+    Multiple(Vec<String>),
+}
+
+impl From<String> for Sentences {
+    fn from(s: String) -> Self {
+        Self::Single(s)
+    }
+}
+
+impl From<Vec<&str>> for Sentences {
+    fn from(strings: Vec<&str>) -> Self {
+        Self::Multiple(strings.into_iter().map(|s| s.to_string()).collect())
+    }
+}
+
+impl From<Vec<String>> for Sentences {
+    fn from(strings: Vec<String>) -> Self {
+        Self::Multiple(strings)
+    }
+}
+
+impl From<Sentences> for Vec<String> {
+    fn from(sentences: Sentences) -> Self {
+        match sentences {
+            Sentences::Single(s) => vec![s],
+            Sentences::Multiple(vec) => vec,
+        }
+    }
 }
