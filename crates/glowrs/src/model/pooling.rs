@@ -1,6 +1,9 @@
 use anyhow::Result;
 use candle_core::Tensor;
+use serde::Deserialize;
 
+#[derive(Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum PoolingStrategy {
     Mean,
     Max,
