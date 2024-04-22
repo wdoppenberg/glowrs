@@ -1,11 +1,49 @@
 name: Publish Package
 on:
-  push:
-    branches:
-      - master
+  release:
+    types: [ published ]
+
 jobs:
+  build-and-test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-latest, macos-latest, windows-latest ]
+
+    name: Test multiple workspaces on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+
+    env:
+      CARGO_TERM_COLOR: always
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            crates/glowrs
+            crates/glowrs-server
+
+      - name: Build
+        run: cargo build --verbose
+
+      - name: Check formatting
+        run: cargo fmt -- --check
+
+      - name: Check clippy
+        run: cargo clippy -- -D warnings
+
+      - name: Publish dry-run
+        run: cargo publish -p glowrs --dry-run
+
+      - name: Run tests
+        run: cargo test --verbose
+
+
   publish:
     runs-on: ubuntu-20.04
+    needs: [ build-and-test ]
     steps:
       - uses: actions/checkout@v4
 
@@ -15,7 +53,7 @@ jobs:
           LAST_PUBLISHED_VERSION=$(cargo search glowrs --limit 1 | awk '{print $3}' | tr -d '"')
           LOCAL_VERSION=$(grep -e '^version\s*=\s*"' Cargo.toml | head -1 | cut -d '"' -f2)
           if [ "$LAST_PUBLISHED_VERSION" == "$LOCAL_VERSION" ]; then
-            echo "::set-output name=skip-publish::true"
+            exit 1 # Force a failure if the versions match
           fi
 
       - uses: Swatinem/rust-cache@v2
@@ -26,4 +64,3 @@ jobs:
 
       - name: Publish glowrs
         run: cargo publish -p glowrs --token ${{ secrets.CRATES_TOKEN }}
-        if: steps.check-version.outputs.skip-publish != 'true'

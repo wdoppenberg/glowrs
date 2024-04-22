@@ -1,4 +1,3 @@
-use anyhow::{Context, Error, Result};
 use candle_core::{DType, Module, Tensor};
 use candle_nn::VarBuilder;
 use candle_transformers::models::{
@@ -16,10 +15,10 @@ pub use candle_transformers::models::{
 use serde::Deserialize;
 
 use crate::model::device::DEVICE;
-use crate::model::utils::normalize_l2;
-use crate::Usage;
-
 use crate::model::pooling::{pool_embeddings, PoolingStrategy};
+use crate::model::utils::normalize_l2;
+use crate::{Error, Result, Usage};
+
 #[cfg(test)]
 use candle_nn::VarMap;
 
@@ -35,16 +34,17 @@ struct BaseModelConfig {
 }
 
 pub(crate) fn parse_config(config_str: &str) -> Result<ModelConfig> {
+    use Error::*;
     let base_config: BaseModelConfig = serde_json::from_str(config_str)?;
 
     let config = match base_config.architectures {
         Some(arch) => {
             if arch.is_empty() {
-                return Err(Error::msg("No architectures found"));
+                return Err(InvalidModelConfig("No architectures found"));
             }
 
             if arch.len() > 1 {
-                return Err(Error::msg("Multiple architectures not supported"));
+                return Err(InvalidModelConfig("Multiple architectures not supported"));
             }
 
             match arch.first().map(String::as_str) {
@@ -60,10 +60,10 @@ pub(crate) fn parse_config(config_str: &str) -> Result<ModelConfig> {
                     let config: DistilBertConfig = serde_json::from_str(config_str)?;
                     ModelConfig::DistilBert(config)
                 }
-                _ => return Err(Error::msg("Invalid model architecture")),
+                _ => return Err(InvalidModelConfig("Invalid model architecture")),
             }
         }
-        None => return Err(Error::msg("Model architecture not found")),
+        None => return Err(InvalidModelConfig("Model architecture not found")),
     };
 
     Ok(config)
@@ -149,12 +149,14 @@ pub(crate) fn encode_batch_with_usage<'s, E>(
 where
     E: Into<EncodeInput<'s>> + Send,
 {
-    let tokens = tokenizer
-        .encode_batch(sentences, true)
-        .map_err(Error::msg)
-        .context("Failed to encode batch.")?;
+    let tokens = tokenizer.encode_batch(sentences, true)?;
 
     let prompt_tokens = tokens.len() as u32;
+
+    let usage = Usage {
+        prompt_tokens,
+        total_tokens: prompt_tokens,
+    };
 
     let token_ids = tokens
         .iter()
@@ -170,20 +172,16 @@ where
     let embeddings = model.encode(&token_ids)?;
     tracing::trace!("generated embeddings {:?}", embeddings.shape());
 
-    // Apply some avg-pooling by taking the mean model value for all tokens (including padding)
-    let (_n_sentence, out_tokens, _hidden_size) = embeddings.dims3()?;
+    // Apply pooling
     let pooled_embeddings = pool_embeddings(&embeddings, pooling_strategy)?;
+
+    // Normalize embeddings (if required)
     let embeddings = if normalize {
         normalize_l2(&pooled_embeddings)?
     } else {
         pooled_embeddings
     };
 
-    // TODO: Incorrect usage calculation - fix
-    let usage = Usage {
-        prompt_tokens,
-        total_tokens: prompt_tokens + (out_tokens as u32),
-    };
     Ok((embeddings, usage))
 }
 

@@ -1,4 +1,3 @@
-use anyhow::{Context, Error, Result};
 use candle_core::Tensor;
 use hf_hub::api::sync::{Api, ApiRepo};
 use hf_hub::{Repo, RepoType};
@@ -10,7 +9,7 @@ use crate::model::embedder::{
     encode_batch, encode_batch_with_usage, load_pretrained_model, EmbedderModel,
 };
 use crate::model::utils;
-use crate::Usage;
+use crate::{Error, Result, Usage};
 
 #[cfg(test)]
 use crate::model::embedder::{load_zeros_model, parse_config};
@@ -57,8 +56,9 @@ impl SentenceTransformer {
     ///
     /// ```rust
     /// # use glowrs::SentenceTransformer;
+    /// # use std::error::Error;
     ///
-    /// # fn main() -> anyhow::Result<()> {
+    /// # fn main() -> Result<(), Box<dyn Error>> {
     /// let encoder = SentenceTransformer::from_repo_string("sentence-transformers/all-MiniLM-L6-v2")?;
     ///
     /// # Ok(())
@@ -84,26 +84,19 @@ impl SentenceTransformer {
     }
 
     pub fn from_api(api: ApiRepo) -> Result<Self> {
-        let model_path = api
-            .get("model.safetensors")
-            .context("Model repository is not available or doesn't contain `model.safetensors`.")?;
+        let model_path = api.get("model.safetensors")?;
 
-        let config_path = api
-            .get("config.json")
-            .context("Model repository doesn't contain `config.json`.")?;
+        let config_path = api.get("config.json")?;
 
-        let tokenizer_path = api
-            .get("tokenizer.json")
-            .context("Model repository doesn't contain `tokenizer.json`.")?;
+        let tokenizer_path = api.get("tokenizer.json")?;
 
         Self::from_path(&model_path, &config_path, &tokenizer_path)
     }
 
     pub fn from_path(model_path: &Path, config_path: &Path, tokenizer_path: &Path) -> Result<Self> {
-        let tokenizer = Tokenizer::from_file(tokenizer_path).map_err(Error::msg)?;
+        let tokenizer = Tokenizer::from_file(tokenizer_path)?;
 
-        let model = load_pretrained_model(model_path, config_path)
-            .context("Something went wrong while loading the model.")?;
+        let model = load_pretrained_model(model_path, config_path)?;
 
         Ok(Self::new(model, tokenizer))
     }
@@ -119,7 +112,9 @@ impl SentenceTransformer {
     /// use glowrs::SentenceTransformer;
     /// use std::path::Path;
     ///
-    /// # fn main() -> anyhow::Result<()> {
+    /// # type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
+    ///
+    /// # fn main() -> Result<()> {
     /// let path = Path::new("path/to/folder");
     ///
     /// let encoder = SentenceTransformer::from_folder(path)?;
@@ -133,7 +128,9 @@ impl SentenceTransformer {
         let tokenizer_path = folder_path.join("tokenizer.json");
 
         if !model_path.exists() || !config_path.exists() || !tokenizer_path.exists() {
-            Err(anyhow::anyhow!("model.safetensors, config.json, or tokenizer.json does not exist in the given directory"))
+            Err(Error::ModelLoad(
+                "model.safetensors, config.json, or tokenizer.json does not exist in the given directory"
+            ))
         } else {
             Self::from_path(&model_path, &config_path, &tokenizer_path)
         }
@@ -147,7 +144,9 @@ impl SentenceTransformer {
     /// # use glowrs::SentenceTransformer;
     /// # use glowrs::PoolingStrategy;
     ///
-    /// # fn main() -> anyhow::Result<()> {
+    /// # type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
+    ///
+    /// # fn main() -> Result<()> {
     /// let encoder = SentenceTransformer::from_repo_string("sentence-transformers/all-MiniLM-L6-v2")?
     ///    .with_pooling_strategy(PoolingStrategy::Sum);
     ///
@@ -161,7 +160,7 @@ impl SentenceTransformer {
 
     #[cfg(test)]
     pub(crate) fn test_from_config_json(config_path: &Path, tokenizer_path: &Path) -> Result<Self> {
-        let tokenizer = Tokenizer::from_file(tokenizer_path).map_err(Error::msg)?;
+        let tokenizer = Tokenizer::from_file(tokenizer_path)?;
 
         let config_str = std::fs::read_to_string(config_path)?;
 

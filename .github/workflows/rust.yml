@@ -1,6 +1,14 @@
 name: Build & Test
 
 on:
+  push:
+    branches: [ "master" ]
+    paths:
+      - "crates/**"
+      - ".github/workflows/rust.yml"
+      - "tests/**"
+      - "Cargo.toml"
+      - ".cargo/**"
   pull_request:
     branches: [ "master" ]
     paths:
