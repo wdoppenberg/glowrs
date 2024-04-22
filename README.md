@@ -3,7 +3,9 @@
 # Library Usage
 
  
-`glowrs` provides an easy and familiar interface to use pre-trained models for embeddings and sentence similarity.
+`glowrs` provides an easy and familiar interface to use pre-trained models for embeddings and sentence similarity. 
+Inspired by the [`sentence-transformers`](https://www.sbert.net/index.html) library, which is a great 
+Python library for sentence embeddings and features a wide range of models and utilities. 
  
 ## Example
 
@@ -146,3 +148,9 @@ This is still a work-in-progress. The embedding performance is decent but can pr
 benchmarking. Furthermore, for higher batch sizes, the program is killed due to a [bug](https://github.com/huggingface/candle/issues/1596).
 
 Do not use this in a production environment. 
+
+## Credits
+
+* [Huggingface](https://huggingface.co) for the models and the `candle` library.
+* [Jina AI](https://jina.ai) for the `jina-embeddings-v2-base-en` model.
+* [`sentence-transformers`](https://www.sbert.net/index.html) for being the gold standard in sentence embeddings.
