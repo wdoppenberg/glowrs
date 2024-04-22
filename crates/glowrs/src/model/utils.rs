@@ -1,3 +1,4 @@
+use crate::Result;
 use candle_core::Tensor;
 
 pub fn normalize_l1(v: &Tensor) -> candle_core::Result<Tensor> {
@@ -8,17 +9,19 @@ pub fn normalize_l2(v: &Tensor) -> candle_core::Result<Tensor> {
     v.broadcast_div(&v.sqr()?.sum_keepdim(1)?.sqrt()?)
 }
 
-pub fn parse_repo_string(repo_string: &str) -> anyhow::Result<(&str, &str)> {
+pub fn parse_repo_string(repo_string: &str) -> Result<(&str, &str)> {
+    use crate::Error::InvalidModelName;
+
     // Fail if the repo string is empty
     if repo_string.is_empty() {
-        return Err(anyhow::anyhow!("Model repository string is empty"));
+        return Err(InvalidModelName("Model repository string is empty"));
     }
 
     // Fail if the repo string contains illegal characters
     const ILLEGAL_CHARS: [char; 6] = ['\\', '<', '>', '|', '?', '*'];
     if repo_string.chars().any(|c| ILLEGAL_CHARS.contains(&c)) {
-        return Err(anyhow::anyhow!(
-            "Model repository string contains illegal characters"
+        return Err(InvalidModelName(
+            "Model repository string contains illegal characters",
         ));
     }
 
@@ -40,7 +43,7 @@ mod test {
     use super::*;
 
     #[test]
-    fn test_parse_repo_string() -> anyhow::Result<()> {
+    fn test_parse_repo_string() -> Result<()> {
         let repo_string = "sentence-transformers/all-MiniLM-L6-v2:refs/pr/21";
         let (model_repo, default_revision) = parse_repo_string(repo_string)?;
         assert_eq!(model_repo, "sentence-transformers/all-MiniLM-L6-v2");

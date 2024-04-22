@@ -1,4 +1,4 @@
-use anyhow::Result;
+use crate::Result;
 use candle_core::Tensor;
 use serde::Deserialize;
 
@@ -12,9 +12,9 @@ pub enum PoolingStrategy {
 
 pub fn pool_embeddings(embeddings: &Tensor, strategy: &PoolingStrategy) -> Result<Tensor> {
     match strategy {
-        PoolingStrategy::Mean => Ok(mean_pooling(embeddings)?),
-        PoolingStrategy::Max => Ok(max_pooling(embeddings)?),
-        PoolingStrategy::Sum => Ok(sum_pooling(embeddings)?),
+        PoolingStrategy::Mean => mean_pooling(embeddings),
+        PoolingStrategy::Max => max_pooling(embeddings),
+        PoolingStrategy::Sum => sum_pooling(embeddings),
     }
 }
 
