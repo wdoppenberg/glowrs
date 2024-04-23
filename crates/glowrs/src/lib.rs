@@ -1,8 +1,11 @@
 #![doc = include_str!("../README.md")]
 
 mod error;
+mod exports;
 pub mod model;
-pub use error::Error;
+pub use exports::*;
+
+pub use crate::error::Error;
 pub(crate) use error::Result;
 
 pub use model::pooling::PoolingStrategy;

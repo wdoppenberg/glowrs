@@ -1,4 +1,4 @@
-use glowrs::SentenceTransformer;
+use glowrs::{Device, PoolingStrategy, SentenceTransformer};
 
 use crate::server::data_models::{EmbeddingsRequest, EmbeddingsResponse};
 use crate::server::infer::client::Client;
@@ -15,10 +15,10 @@ impl EmbeddingsHandler {
             sentence_transformer,
         }
     }
-    pub fn from_repo_string(model_repo: &str) -> anyhow::Result<Self> {
+    pub fn from_repo_string(model_repo: &str, device: &Device) -> anyhow::Result<Self> {
         tracing::info!("Loading model: {}. Wait for model load.", model_repo);
 
-        let sentence_transformer = SentenceTransformer::from_repo_string(model_repo)?;
+        let sentence_transformer = SentenceTransformer::from_repo_string(model_repo, device)?;
 
         tracing::info!("Model loaded");
 
@@ -39,9 +39,11 @@ impl RequestHandler for EmbeddingsHandler {
         const NORMALIZE: bool = false;
 
         // Infer embeddings
-        let (embeddings, usage) = self
-            .sentence_transformer
-            .encode_batch_with_usage(sentences.into(), NORMALIZE)?;
+        let (embeddings, usage) = self.sentence_transformer.encode_batch_with_usage(
+            sentences.into(),
+            NORMALIZE,
+            PoolingStrategy::Mean,
+        )?;
 
         let response = EmbeddingsResponse::from_embeddings(embeddings, usage, request.model);
 

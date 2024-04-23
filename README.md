@@ -10,27 +10,30 @@ Python library for sentence embeddings and features a wide range of models and u
 ## Example
 
 ```rust
-use glowrs::SentenceTransformer;
+use glowrs::{SentenceTransformer, Device, PoolingStrategy, Error};
 
-fn main() {
-    let encoder = SentenceTransformer::from_repo_string("sentence-transformers/all-MiniLM-L6-v2").unwrap();
+fn main() -> Result<(), Error> {
+    let encoder = SentenceTransformer::from_repo_string("sentence-transformers/all-MiniLM-L6-v2", &Device::Cpu)?;
 
     let sentences = vec![
         "Hello, how are you?",
         "Hey, how are you doing?"
     ];
 
-    let embeddings = encoder.encode_batch(sentences, true).unwrap();
+    let embeddings = encoder.encode_batch(sentences, true, PoolingStrategy::Mean)?;
 
     println!("{:?}", embeddings);
+    
+    Ok(())
 }
 ```
+
 
 ## Features
  
 - Load models from Hugging Face Hub
+- Use hardware acceleration (Metal, CUDA)
 - More to come!
-
 
 # Server Usage
 
@@ -152,5 +155,4 @@ Do not use this in a production environment.
 ## Credits
 
 * [Huggingface](https://huggingface.co) for the models and the `candle` library.
-* [Jina AI](https://jina.ai) for the `jina-embeddings-v2-base-en` model.
 * [`sentence-transformers`](https://www.sbert.net/index.html) for being the gold standard in sentence embeddings.

@@ -1,3 +1,4 @@
+mod builder;
 pub mod device;
 pub mod embedder;
 pub mod pooling;
