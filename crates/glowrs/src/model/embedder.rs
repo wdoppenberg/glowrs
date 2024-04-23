@@ -1,4 +1,4 @@
-use candle_core::{DType, Module, Tensor};
+use candle_core::{DType, Device, Module, Tensor};
 use candle_nn::VarBuilder;
 use candle_transformers::models::{
     bert::Config as BertConfig, distilbert::Config as DistilBertConfig,
@@ -14,7 +14,6 @@ pub use candle_transformers::models::{
 };
 use serde::Deserialize;
 
-use crate::model::device::DEVICE;
 use crate::model::pooling::{pool_embeddings, PoolingStrategy};
 use crate::model::utils::normalize_l2;
 use crate::{Error, Result, Usage};
@@ -81,7 +80,11 @@ where
 }
 
 /// Load models.
-pub(crate) fn load_pretrained_model<T>(model_path: &Path, config_path: &Path) -> Result<T>
+pub(crate) fn load_pretrained_model<T>(
+    model_path: &Path,
+    config_path: &Path,
+    device: &Device,
+) -> Result<T>
 where
     T: Deref<Target = dyn EmbedderModel> + From<Box<dyn EmbedderModel>> + AsRef<dyn EmbedderModel>,
 {
@@ -89,13 +92,15 @@ where
     let model_config = parse_config(&config_str)?;
 
     // TODO: Make DType configurable
-    let vb = unsafe { VarBuilder::from_mmaped_safetensors(&[model_path], DType::F32, &DEVICE)? };
+    let vb = unsafe { VarBuilder::from_mmaped_safetensors(&[model_path], DType::F32, device)? };
     load_model::<T>(vb, model_config)
 }
 
 /// Trait for embedding models
 pub trait EmbedderModel: Send + Sync {
     fn encode(&self, token_ids: &Tensor) -> Result<Tensor>;
+
+    fn get_device(&self) -> &Device;
 }
 
 impl EmbedderModel for BertModel {
@@ -104,12 +109,20 @@ impl EmbedderModel for BertModel {
         let token_type_ids = token_ids.zeros_like()?;
         Ok(self.forward(token_ids, &token_type_ids)?)
     }
+
+    fn get_device(&self) -> &Device {
+        &self.device
+    }
 }
 
 impl EmbedderModel for JinaBertModel {
     #[inline]
     fn encode(&self, token_ids: &Tensor) -> Result<Tensor> {
         Ok(self.forward(token_ids)?)
+    }
+
+    fn get_device(&self) -> &Device {
+        &self.device
     }
 }
 
@@ -118,6 +131,10 @@ impl EmbedderModel for DistilBertModel {
     fn encode(&self, token_ids: &Tensor) -> Result<Tensor> {
         let attention_mask = token_ids.ones_like()?;
         Ok(self.forward(token_ids, &attention_mask)?)
+    }
+
+    fn get_device(&self) -> &Device {
+        &self.device
     }
 }
 
@@ -143,7 +160,7 @@ pub(crate) fn encode_batch_with_usage<'s, E>(
     model: &dyn EmbedderModel,
     tokenizer: &Tokenizer,
     sentences: Vec<E>,
-    pooling_strategy: &PoolingStrategy,
+    pooling_strategy: PoolingStrategy,
     normalize: bool,
 ) -> Result<(Tensor, Usage)>
 where
@@ -162,7 +179,7 @@ where
         .iter()
         .map(|tokens| {
             let tokens = tokens.get_ids().to_vec();
-            Tensor::new(tokens.as_slice(), &DEVICE)
+            Tensor::new(tokens.as_slice(), model.get_device())
         })
         .collect::<candle_core::Result<Vec<_>>>()?;
 
@@ -199,7 +216,7 @@ pub(crate) fn encode_batch<'s, E>(
     model: &dyn EmbedderModel,
     tokenizer: &Tokenizer,
     sentences: Vec<E>,
-    pooling_strategy: &PoolingStrategy,
+    pooling_strategy: PoolingStrategy,
     normalize: bool,
 ) -> Result<Tensor>
 where
@@ -211,23 +228,23 @@ where
 }
 
 #[cfg(test)]
-pub(crate) fn load_random_model<T>(model_config: ModelConfig) -> Result<T>
+pub(crate) fn load_random_model<T>(model_config: ModelConfig, device: &Device) -> Result<T>
 where
     T: Deref<Target = dyn EmbedderModel> + From<Box<dyn EmbedderModel>> + AsRef<dyn EmbedderModel>,
 {
     let varmap = VarMap::new();
-    let vb = VarBuilder::from_varmap(&varmap, DType::F32, &DEVICE);
+    let vb = VarBuilder::from_varmap(&varmap, DType::F32, device);
 
     load_model::<T>(vb, model_config)
 }
 
 #[cfg(test)]
-pub(crate) fn load_zeros_model<T>(model_config: ModelConfig) -> Result<T>
+pub(crate) fn load_zeros_model<T>(model_config: ModelConfig, device: &Device) -> Result<T>
 where
     T: Deref<Target = dyn EmbedderModel> + From<Box<dyn EmbedderModel>> + AsRef<dyn EmbedderModel>,
 {
     // TODO: Make DType configurable
-    let vb = VarBuilder::zeros(DType::F32, &DEVICE);
+    let vb = VarBuilder::zeros(DType::F32, device);
     load_model::<T>(vb, model_config)
 }
 
@@ -288,14 +305,15 @@ mod test {
 
     #[test]
     fn test_forward_bert() -> Result<()> {
+        let device = &Device::Cpu;
         let path = Path::new(BERT_CONFIG_PATH);
 
         let config_str = std::fs::read_to_string(path)?;
         let config = parse_config(&config_str)?;
 
-        let model: Box<_> = load_random_model(config)?;
+        let model: Box<_> = load_random_model(config, device)?;
 
-        let token_ids = Tensor::zeros(&[1, 128], DType::U32, &DEVICE)?;
+        let token_ids = Tensor::zeros(&[1, 128], DType::U32, device)?;
 
         let embeddings = model.encode(&token_ids)?;
 
@@ -308,14 +326,15 @@ mod test {
 
     #[test]
     fn test_forward_jinabert() -> Result<()> {
+        let device = &Device::Cpu;
         let path = Path::new(JINABERT_CONFIG_PATH);
 
         let config_str = std::fs::read_to_string(path)?;
         let config = parse_config(&config_str)?;
 
-        let model: Box<dyn EmbedderModel> = load_random_model(config)?;
+        let model: Box<dyn EmbedderModel> = load_random_model(config, device)?;
 
-        let token_ids = Tensor::zeros(&[1, 128], DType::U32, &DEVICE)?;
+        let token_ids = Tensor::zeros(&[1, 128], DType::U32, device)?;
 
         let embeddings = model.encode(&token_ids)?;
 
@@ -328,14 +347,15 @@ mod test {
 
     #[test]
     fn test_forward_distilbert() -> Result<()> {
+        let device = &Device::Cpu;
         let path = Path::new(DISTILBERT_CONFIG_PATH);
 
         let config_str = std::fs::read_to_string(path)?;
         let config = parse_config(&config_str)?;
 
-        let model: Box<dyn EmbedderModel> = load_random_model(config)?;
+        let model: Box<dyn EmbedderModel> = load_random_model(config, device)?;
 
-        let token_ids = Tensor::zeros(&[1, 128], DType::U32, &DEVICE)?;
+        let token_ids = Tensor::zeros(&[1, 128], DType::U32, device)?;
 
         let embeddings = model.encode(&token_ids)?;
 

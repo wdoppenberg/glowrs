@@ -5,25 +5,28 @@ The `glowrs` library provides an easy and familiar interface to use pre-trained 
 ## Example
 
 ```rust
-use glowrs::SentenceTransformer;
+use glowrs::{SentenceTransformer, Device, PoolingStrategy, Error};
 
-fn main() {
-    let encoder = SentenceTransformer::from_repo_string("sentence-transformers/all-MiniLM-L6-v2").unwrap();
+fn main() -> Result<(), Error> {
+    let encoder = SentenceTransformer::from_repo_string("sentence-transformers/all-MiniLM-L6-v2", &Device::Cpu)?;
 
     let sentences = vec![
         "Hello, how are you?",
         "Hey, how are you doing?"
     ];
 
-    let embeddings = encoder.encode_batch(sentences, true).unwrap();
+    let embeddings = encoder.encode_batch(sentences, true, PoolingStrategy::Mean)?;
 
     println!("{:?}", embeddings);
+    
+    Ok(())
 }
 ```
 
 ## Features
  
 - Load models from Hugging Face Hub
+- Use hardware acceleration (Metal, CUDA)
 - More to come!
 
 ### Build features

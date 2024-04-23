@@ -10,6 +10,7 @@ use tower_http::timeout::TimeoutLayer;
 use tower_http::trace::TraceLayer;
 
 use clap::Args;
+use glowrs::model::device::DEVICE;
 use thiserror::__private::AsDisplay;
 use tracing::{info_span, Span};
 
@@ -24,7 +25,7 @@ pub struct RouterArgs {
 }
 
 pub fn init_router(args: &RouterArgs) -> anyhow::Result<Router> {
-    let state = Arc::new(ServerState::new(args.model_repo.clone())?);
+    let state = Arc::new(ServerState::new(args.model_repo.clone(), &DEVICE)?);
 
     let router = Router::new()
         .route("/v1/embeddings", post(embeddings::infer_text_embeddings))

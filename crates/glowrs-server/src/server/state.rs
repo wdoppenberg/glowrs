@@ -1,4 +1,5 @@
 use anyhow::Result;
+use candle_core::Device;
 use glowrs::model::utils::parse_repo_string;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -19,7 +20,7 @@ pub struct ServerState {
 }
 
 impl ServerState {
-    pub fn new(model_repos: Vec<String>) -> Result<Self> {
+    pub fn new(model_repos: Vec<String>, device: &Device) -> Result<Self> {
         if model_repos.is_empty() {
             return Err(anyhow::anyhow!("No models provided"));
         }
@@ -28,7 +29,7 @@ impl ServerState {
             .into_iter()
             .filter_map(|model_repo| {
                 let (name, _) = parse_repo_string(&model_repo).ok()?;
-                let handler = EmbeddingsHandler::from_repo_string(&model_repo).ok()?;
+                let handler = EmbeddingsHandler::from_repo_string(&model_repo, device).ok()?;
                 let executor = DedicatedExecutor::new(handler).ok()?;
                 let client = EmbeddingsClient::new(&executor);
 
