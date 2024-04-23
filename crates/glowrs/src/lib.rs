@@ -3,6 +3,7 @@
 mod error;
 mod exports;
 pub mod model;
+
 pub use exports::*;
 
 pub use crate::error::Error;
