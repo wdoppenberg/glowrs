@@ -1,8 +1,21 @@
+use clap::Parser;
 use glowrs::{Device, Error, PoolingStrategy, SentenceTransformer};
 use std::process::ExitCode;
+use tracing_subscriber::prelude::*;
+
+#[derive(Debug, Parser)]
+pub struct App {
+    #[clap(short, long, default_value = "jinaai/jina-embeddings-v2-small-en")]
+    pub model_repo: String,
+
+    #[clap(short, long, default_value = "debug")]
+    pub log_level: String,
+}
 
 fn main() -> Result<ExitCode, Error> {
-    let sentences = vec![
+    let app = App::parse();
+
+    let sentences = [
         "The cat sits outside",
         "A man is playing guitar",
         "I love pasta",
@@ -11,14 +24,25 @@ fn main() -> Result<ExitCode, Error> {
         "A woman watches TV",
         "The new movie is so great",
         "Do you like pizza?",
-        "The cat sits",
     ];
+
+    tracing_subscriber::registry()
+        .with(
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+                eprintln!("No environment variables found that can initialize tracing_subscriber::EnvFilter. Using defaults.");
+                // axum logs rejections from built-in extractors with the `axum::rejection`
+                // target, at `TRACE` level. `axum::rejection=trace` enables showing those events
+                format!("glowrs={},tower_http=debug,axum::rejection=trace", app.log_level).into()
+            }),
+        )
+        .with(tracing_subscriber::fmt::layer()).init();
+
+    println!("Using model {}", app.model_repo);
     let device = Device::Cpu;
-    let encoder =
-        SentenceTransformer::from_repo_string("Snowflake/snowflake-arctic-embed-xs", &device)?;
+    let encoder = SentenceTransformer::from_repo_string(&app.model_repo, &device)?;
 
     let pooling_strategy = PoolingStrategy::Mean;
-    let embeddings = encoder.encode_batch(sentences.clone(), false, pooling_strategy)?;
+    let embeddings = encoder.encode_batch(sentences.into(), false, pooling_strategy)?;
     println!("Embeddings: {:?}", embeddings);
 
     let (n_sentences, _) = embeddings.dims2()?;

@@ -6,8 +6,7 @@ pub mod model;
 
 pub use exports::*;
 
-pub use crate::error::Error;
-pub(crate) use error::Result;
+pub use crate::error::{Error, Result};
 
 pub use model::pooling::PoolingStrategy;
 pub use model::sentence_transformer::SentenceTransformer;

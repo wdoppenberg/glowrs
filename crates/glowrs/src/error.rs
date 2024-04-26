@@ -8,6 +8,8 @@ pub enum Error {
     ModelLoad(&'static str),
     #[error("Invalid model architecture: {0}")]
     InvalidModelConfig(&'static str),
+    #[error("Inference error: {0}")]
+    InferenceError(&'static str),
     #[error("Candle error: {0}")]
     Candle(#[from] candle_core::Error),
     #[error("Tokenization error: {0}")]
@@ -20,7 +22,7 @@ pub enum Error {
     HFHub(#[from] hf_hub::api::sync::ApiError),
 }
 
-pub(crate) type Result<T> = std::result::Result<T, Error>;
+pub type Result<T> = std::result::Result<T, Error>;
 
 #[cfg(test)]
 mod test {

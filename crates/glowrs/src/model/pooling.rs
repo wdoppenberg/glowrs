@@ -10,18 +10,22 @@ pub enum PoolingStrategy {
     Sum,
 }
 
-pub fn pool_embeddings(embeddings: &Tensor, strategy: PoolingStrategy) -> Result<Tensor> {
+pub fn pool_embeddings(
+    embeddings: &Tensor,
+    pad_mask: &Tensor,
+    strategy: PoolingStrategy,
+) -> Result<Tensor> {
     match strategy {
-        PoolingStrategy::Mean => mean_pooling(embeddings),
+        PoolingStrategy::Mean => mean_pooling(embeddings, pad_mask),
         PoolingStrategy::Max => max_pooling(embeddings),
         PoolingStrategy::Sum => sum_pooling(embeddings),
     }
 }
 
-pub fn mean_pooling(embeddings: &Tensor) -> Result<Tensor> {
-    let (_, out_tokens, _) = embeddings.dims3()?;
+pub fn mean_pooling(embeddings: &Tensor, pad_mask: &Tensor) -> Result<Tensor> {
+    let out_tokens = pad_mask.sum(1)?.to_vec1::<u8>()?.iter().sum::<u8>() as f64;
 
-    Ok((embeddings.sum(1)? / (out_tokens as f64))?)
+    Ok((embeddings.sum(1)? / (out_tokens))?)
 }
 
 pub fn max_pooling(embeddings: &Tensor) -> Result<Tensor> {
@@ -43,7 +47,8 @@ mod test {
     ) -> Result<()> {
         // 1 sentence, 20 tokens, 32 dimensions
         let v = Tensor::ones(&[1, 20, 32], DType::F32, &Device::Cpu)?;
-        let v_pool = pool_embeddings(&v, strategy)?;
+        let pad_mask = Tensor::ones(&[1, 20], DType::F32, &Device::Cpu)?;
+        let v_pool = pool_embeddings(&v, &pad_mask, strategy)?;
         let (sent, dim) = v_pool.dims2()?;
         assert_eq!(sent, 1);
         assert_eq!(dim, 32);

@@ -61,11 +61,15 @@ impl SentenceTransformer {
     /// # }
     /// ```
     pub fn from_repo_string(repo_string: &str, device: &Device) -> Result<Self> {
+        let span = tracing::span!(tracing::Level::TRACE, "st-from-repo-string");
+        let _enter = span.enter();
         let (model_repo, default_revision) = utils::parse_repo_string(repo_string)?;
         Self::from_repo(model_repo, default_revision, device)
     }
 
     pub fn from_repo(repo_name: &str, revision: &str, device: &Device) -> Result<Self> {
+        let span = tracing::span!(tracing::Level::TRACE, "st-from-repo");
+        let _enter = span.enter();
         let api = Api::new()?.repo(Repo::with_revision(
             repo_name.into(),
             RepoType::Model,
@@ -76,6 +80,8 @@ impl SentenceTransformer {
     }
 
     pub fn from_api(api: ApiRepo, device: &Device) -> Result<Self> {
+        let span = tracing::span!(tracing::Level::TRACE, "st-from-api");
+        let _enter = span.enter();
         let model_path = api.get("model.safetensors")?;
 
         let config_path = api.get("config.json")?;
@@ -91,7 +97,19 @@ impl SentenceTransformer {
         tokenizer_path: &Path,
         device: &Device,
     ) -> Result<Self> {
-        let tokenizer = Tokenizer::from_file(tokenizer_path)?;
+        let span = tracing::span!(tracing::Level::TRACE, "st-from-path");
+        let _enter = span.enter();
+        let mut tokenizer = Tokenizer::from_file(tokenizer_path)?;
+
+        if let Some(pp) = tokenizer.get_padding_mut() {
+            pp.strategy = tokenizers::PaddingStrategy::BatchLongest
+        } else {
+            let pp = tokenizers::PaddingParams {
+                strategy: tokenizers::PaddingStrategy::BatchLongest,
+                ..Default::default()
+            };
+            tokenizer.with_padding(Some(pp));
+        }
 
         let model = load_pretrained_model(model_path, config_path, device)?;
 
@@ -119,6 +137,8 @@ impl SentenceTransformer {
     /// # Ok(())
     /// # }
     pub fn from_folder(folder_path: &Path, device: &Device) -> Result<Self> {
+        let span = tracing::span!(tracing::Level::TRACE, "st-from-folder");
+        let _enter = span.enter();
         // Construct PathBuf objects for model, config, and tokenizer json files
         let model_path = folder_path.join("model.safetensors");
         let config_path = folder_path.join("config.json");
@@ -177,6 +197,9 @@ impl SentenceTransformer {
     where
         E: Into<EncodeInput<'s>> + Send,
     {
+        let span = tracing::span!(tracing::Level::TRACE, "st-encode-batch");
+        let _enter = span.enter();
+
         let (embeddings, usage) = encode_batch_with_usage(
             self.model.as_ref(),
             &self.tokenizer,
@@ -196,6 +219,9 @@ impl SentenceTransformer {
     where
         E: Into<EncodeInput<'s>> + Send,
     {
+        let span = tracing::span!(tracing::Level::TRACE, "st-encode-batch");
+        let _enter = span.enter();
+
         encode_batch(
             self.model.as_ref(),
             &self.tokenizer,
@@ -203,6 +229,10 @@ impl SentenceTransformer {
             pooling_strategy,
             normalize,
         )
+    }
+
+    pub fn get_tokenizer_mut(&mut self) -> &mut Tokenizer {
+        &mut self.tokenizer
     }
 }
 
