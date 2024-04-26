@@ -4,6 +4,7 @@ members = [
 	"crates/glowrs-server"
 ]
 resolver = "2"
+exclude = ["tests", "scripts"]
 
 [workspace.dependencies]
 candle-core = { version = "0.4.1" }
@@ -19,5 +20,5 @@ candle-transformers = { opt-level = 3 }
 
 [workspace.package]
 license = "Apache-2.0"
-version = "0.4.0"
+version = "0.4.1"
 
