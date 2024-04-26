@@ -4,6 +4,7 @@ members = [
 	"crates/glowrs-server"
 ]
 resolver = "2"
+exclude = ["tests", "scripts"]
 
 [workspace.dependencies]
 candle-core = { version = "0.4.1" }

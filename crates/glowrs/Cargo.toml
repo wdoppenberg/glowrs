@@ -9,6 +9,7 @@ documentation = "https://docs.rs/glowrs/"
 readme = "README.md"
 keywords = ["candle", "ai", "deep-learning", "embeddings", "openai"]
 license = { workspace = true }
+exclude = ["tests/fixtures/*"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

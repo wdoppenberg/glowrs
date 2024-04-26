@@ -193,12 +193,12 @@ where
 
     let token_ids = Tensor::stack(&token_ids, 0)?;
 
-    let pad_id: u32;
-    if let Some(pp) = tokenizer.get_padding() {
-        pad_id = pp.pad_id;
-    } else {
-        pad_id = 0;
-    }
+    let pad_id: u32 = {
+        match tokenizer.get_padding() {
+            Some(pp) => pp.pad_id,
+            None => 0,
+        }
+    };
 
     let pad_mask = token_ids.ne(pad_id)?;
 
