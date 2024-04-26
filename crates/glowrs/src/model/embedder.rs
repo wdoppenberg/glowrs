@@ -4,6 +4,7 @@ use candle_transformers::models::{
     bert::Config as BertConfig, distilbert::Config as DistilBertConfig,
     jina_bert::Config as JinaBertConfig,
 };
+use serde::Deserialize;
 use std::ops::Deref;
 use std::path::Path;
 use tokenizers::{EncodeInput, Tokenizer};
@@ -12,7 +13,6 @@ use tokenizers::{EncodeInput, Tokenizer};
 pub use candle_transformers::models::{
     bert::BertModel, distilbert::DistilBertModel, jina_bert::BertModel as JinaBertModel,
 };
-use serde::Deserialize;
 
 use crate::model::pooling::{pool_embeddings, PoolingStrategy};
 use crate::model::utils::normalize_l2;
@@ -129,8 +129,15 @@ impl EmbedderModel for JinaBertModel {
 impl EmbedderModel for DistilBertModel {
     #[inline]
     fn encode(&self, token_ids: &Tensor) -> Result<Tensor> {
-        let attention_mask = token_ids.ones_like()?;
-        Ok(self.forward(token_ids, &attention_mask)?)
+        let size = token_ids.dim(0)?;
+
+        let mask: Vec<_> = (0..size)
+            .flat_map(|i| (0..size).map(move |j| u8::from(j > i)))
+            .collect();
+
+        let mask = Tensor::from_slice(&mask, (size, size), token_ids.device())?;
+
+        Ok(self.forward(token_ids, &mask)?)
     }
 
     fn get_device(&self) -> &Device {
@@ -179,18 +186,28 @@ where
         .iter()
         .map(|tokens| {
             let tokens = tokens.get_ids().to_vec();
+
             Tensor::new(tokens.as_slice(), model.get_device())
         })
         .collect::<candle_core::Result<Vec<_>>>()?;
 
     let token_ids = Tensor::stack(&token_ids, 0)?;
 
+    let pad_id: u32;
+    if let Some(pp) = tokenizer.get_padding() {
+        pad_id = pp.pad_id;
+    } else {
+        pad_id = 0;
+    }
+
+    let pad_mask = token_ids.ne(pad_id)?;
+
     tracing::trace!("running inference on batch {:?}", token_ids.shape());
     let embeddings = model.encode(&token_ids)?;
     tracing::trace!("generated embeddings {:?}", embeddings.shape());
 
     // Apply pooling
-    let pooled_embeddings = pool_embeddings(&embeddings, pooling_strategy)?;
+    let pooled_embeddings = pool_embeddings(&embeddings, &pad_mask, pooling_strategy)?;
 
     // Normalize embeddings (if required)
     let embeddings = if normalize {

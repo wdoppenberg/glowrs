@@ -24,6 +24,7 @@ tokenizers = "0.19.1"
 hf-hub = { version = "0.3.2", features = ["tokio"] }
 thiserror = "1.0.56"
 once_cell = "1.19.0"
+clap = { version = "4.5.4", features = ["derive"] }
 
 [features]
 default = []
@@ -35,4 +36,6 @@ cuda = ["candle-core/cuda", "candle-nn/cuda", "candle-transformers/cuda"]
 dirs = "5.0.1"
 tempfile = "3.10.1"
 approx = "0.5.1"
+tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
+tracing-chrome = "0.7.2"
 
