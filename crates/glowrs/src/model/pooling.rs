@@ -47,7 +47,7 @@ mod test {
     ) -> Result<()> {
         // 1 sentence, 20 tokens, 32 dimensions
         let v = Tensor::ones(&[1, 20, 32], DType::F32, &Device::Cpu)?;
-        let pad_mask = Tensor::ones(&[1, 20], DType::F32, &Device::Cpu)?;
+        let pad_mask = Tensor::ones(&[1, 20], DType::U8, &Device::Cpu)?;
         let v_pool = pool_embeddings(&v, &pad_mask, strategy)?;
         let (sent, dim) = v_pool.dims2()?;
         assert_eq!(sent, 1);
