@@ -46,7 +46,6 @@ fn test_similarity_sentence_transformers() -> Result<ExitCode> {
 
             let sim = sim.to_vec1::<f32>()?;
             let sim = sim.first().expect("Expected a value");
-            println!("Similarity: {}", sim);
             assert_relative_eq!(*sim, 1.0, epsilon = 1e-3);
         }
         println!("Passed all examples for model: {}", &fixture.model)
