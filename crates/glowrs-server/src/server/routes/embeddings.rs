@@ -1,7 +1,8 @@
 use anyhow::Result;
-use axum::extract::State;
+use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::Json;
+use serde::Deserialize;
 use std::sync::Arc;
 use tokio::time::Instant;
 
@@ -9,10 +10,18 @@ use crate::server::data_models::{EmbeddingsRequest, EmbeddingsResponse};
 use crate::server::state::ServerState;
 use crate::server::ServerError;
 
+#[derive(Debug, Deserialize)]
+pub struct QueryData {
+    api_version: Option<String>,
+}
+
 pub async fn infer_text_embeddings(
     State(server_state): State<Arc<ServerState>>,
+    Query(query): Query<QueryData>,
     Json(embeddings_request): Json<EmbeddingsRequest>,
 ) -> Result<(StatusCode, Json<EmbeddingsResponse>), ServerError> {
+    tracing::trace!("Requested API version: {:?}", query.api_version);
+
     let start = Instant::now();
     let (client, _) = server_state
         .model_map

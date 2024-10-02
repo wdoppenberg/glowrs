@@ -1,9 +1,9 @@
-use glowrs::{Device, PoolingStrategy, SentenceTransformer};
-
 use crate::server::data_models::{EmbeddingsRequest, EmbeddingsResponse};
 use crate::server::infer::client::Client;
 use crate::server::infer::handler::RequestHandler;
 use crate::server::infer::DedicatedExecutor;
+use glowrs::model::embedder::EmbedOutput;
+use glowrs::{Device, SentenceTransformer};
 
 pub struct EmbeddingsHandler {
     sentence_transformer: SentenceTransformer,
@@ -39,11 +39,9 @@ impl RequestHandler for EmbeddingsHandler {
         const NORMALIZE: bool = false;
 
         // Infer embeddings
-        let (embeddings, usage) = self.sentence_transformer.encode_batch_with_usage(
-            sentences.into(),
-            NORMALIZE,
-            PoolingStrategy::Mean,
-        )?;
+        let EmbedOutput { embeddings, usage } = self
+            .sentence_transformer
+            .encode_batch_with_usage(sentences.into(), NORMALIZE)?;
 
         let response = EmbeddingsResponse::from_embeddings(embeddings, usage, request.model);
 

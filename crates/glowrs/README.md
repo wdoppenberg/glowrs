@@ -15,7 +15,7 @@ fn main() -> Result<(), Error> {
         "Hey, how are you doing?"
     ];
 
-    let embeddings = encoder.encode_batch(sentences, true, PoolingStrategy::Mean)?;
+    let embeddings = encoder.encode_batch(sentences, true)?;
 
     println!("{:?}", embeddings);
     

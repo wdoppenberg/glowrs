@@ -20,7 +20,7 @@ fn main() -> Result<(), Error> {
         "Hey, how are you doing?"
     ];
 
-    let embeddings = encoder.encode_batch(sentences, true, PoolingStrategy::Mean)?;
+    let embeddings = encoder.encode_batch(sentences, true)?;
 
     println!("{:?}", embeddings);
     
@@ -148,11 +148,13 @@ print(client.models.list())
 ## Disclaimer
 
 This is still a work-in-progress. The embedding performance is decent but can probably do with some
-benchmarking. Furthermore, for higher batch sizes, the program is killed due to a [bug](https://github.com/huggingface/candle/issues/1596).
+benchmarking. Furthermore, this is meant to be a lightweight embedding model library + server. 
 
-Do not use this in a production environment. 
+Do not use this in a production environment. If you are looking for something production-ready & in Rust, 
+consider [`text-embeddings-inference`](https://github.com/huggingface/text-embeddings-inference).
 
 ## Credits
 
-* [Huggingface](https://huggingface.co) for the models and the `candle` library.
-* [`sentence-transformers`](https://www.sbert.net/index.html) for being the gold standard in sentence embeddings.
+* [Huggingface](https://huggingface.co) for the model hosting, the `candle` library, [`text-embeddings-inference`](https://github.com/huggingface/text-embeddings-inference), and 
+[`text-generation-inference`](https://github.com/huggingface/text-generation-inference) which has helped me find the right patterns.
+* [`sentence-transformers`](https://www.sbert.net/index.html) and its contributors for being the gold standard in sentence embeddings.

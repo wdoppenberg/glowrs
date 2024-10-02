@@ -1,18 +1,21 @@
-use clap::Parser;
-use glowrs::{Device, Error, PoolingStrategy, SentenceTransformer};
-use std::process::ExitCode;
-use tracing_subscriber::prelude::*;
+#[allow(dead_code, unused_imports)]
+use std::error::Error;
 
-#[derive(Debug, Parser)]
-pub struct App {
-    #[clap(short, long, default_value = "jinaai/jina-embeddings-v2-small-en")]
-    pub model_repo: String,
+#[cfg(feature = "clap")]
+fn main() -> Result<(), Box<dyn Error>> {
+    use clap::Parser;
+    use glowrs::{Device, PoolingStrategy, SentenceTransformer};
+    use tracing_subscriber::prelude::*;
 
-    #[clap(short, long, default_value = "debug")]
-    pub log_level: String,
-}
+    #[derive(Debug, Parser)]
+    pub struct App {
+        #[clap(short, long, default_value = "jinaai/jina-embeddings-v2-small-en")]
+        pub model_repo: String,
 
-fn main() -> Result<ExitCode, Error> {
+        #[clap(short, long, default_value = "debug")]
+        pub log_level: String,
+    }
+
     let app = App::parse();
 
     let sentences = [
@@ -41,8 +44,8 @@ fn main() -> Result<ExitCode, Error> {
     let device = Device::Cpu;
     let encoder = SentenceTransformer::from_repo_string(&app.model_repo, &device)?;
 
-    let pooling_strategy = PoolingStrategy::Mean;
-    let embeddings = encoder.encode_batch(sentences.into(), false, pooling_strategy)?;
+    let pooling_strategy = Some(PoolingStrategy::Mean);
+    let embeddings = encoder.encode_batch(sentences.into(), false)?;
     println!("Embeddings: {:?}", embeddings);
 
     let (n_sentences, _) = embeddings.dims2()?;
@@ -65,5 +68,10 @@ fn main() -> Result<ExitCode, Error> {
         println!("score: {score:.2} '{}' '{}'", sentences[i], sentences[j])
     }
 
-    Ok(ExitCode::SUCCESS)
+    Ok(())
+}
+
+#[cfg(not(feature = "clap"))]
+fn main() {
+    eprintln!("Enable feature 'clap' to run this example.")
 }
