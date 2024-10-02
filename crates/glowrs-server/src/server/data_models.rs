@@ -10,6 +10,7 @@ pub enum EncodingFormat {
 }
 
 #[derive(Debug, Deserialize, Clone)]
+#[allow(dead_code)]
 pub struct EmbeddingsRequest {
     pub input: Sentences,
     pub model: String,

@@ -1,11 +1,6 @@
-use candle_core::{DType, Device, Module, Tensor};
+use candle_core::{DType, Device, IndexOp, Module, Tensor, D};
 use candle_nn::VarBuilder;
-use candle_transformers::models::{
-    bert::Config as BertConfig, distilbert::Config as DistilBertConfig,
-    jina_bert::Config as JinaBertConfig,
-};
-use serde::Deserialize;
-use std::ops::Deref;
+
 use std::path::Path;
 use tokenizers::{EncodeInput, Tokenizer};
 
@@ -14,91 +9,58 @@ pub use candle_transformers::models::{
     bert::BertModel, distilbert::DistilBertModel, jina_bert::BertModel as JinaBertModel,
 };
 
-use crate::model::pooling::{pool_embeddings, PoolingStrategy};
+use crate::config::model::{BertConfig, ModelConfig, ModelDefinition, ModelType};
+use crate::config::parse::parse_config;
 use crate::model::utils::normalize_l2;
-use crate::{Error, Result, Usage};
+use crate::pooling::PoolingStrategy;
+use crate::{Result, Usage};
 
-#[cfg(test)]
-use candle_nn::VarMap;
-
-pub(crate) enum ModelConfig {
-    Bert(BertConfig),
-    JinaBert(JinaBertConfig),
-    DistilBert(DistilBertConfig),
-}
-
-#[derive(Deserialize)]
-struct BaseModelConfig {
-    architectures: Option<Vec<String>>,
-}
-
-pub(crate) fn parse_config(config_str: &str) -> Result<ModelConfig> {
-    use Error::*;
-    let base_config: BaseModelConfig = serde_json::from_str(config_str)?;
-
-    let config = match base_config.architectures {
-        Some(arch) => {
-            if arch.is_empty() {
-                return Err(InvalidModelConfig("No architectures found"));
-            }
-
-            if arch.len() > 1 {
-                return Err(InvalidModelConfig("Multiple architectures not supported"));
-            }
-
-            match arch.first().map(String::as_str) {
-                Some("BertModel") => {
-                    let config: BertConfig = serde_json::from_str(config_str)?;
-                    ModelConfig::Bert(config)
-                }
-                Some("JinaBertForMaskedLM") => {
-                    let config: JinaBertConfig = serde_json::from_str(config_str)?;
-                    ModelConfig::JinaBert(config)
-                }
-                Some("DistilBertForMaskedLM") => {
-                    let config: DistilBertConfig = serde_json::from_str(config_str)?;
-                    ModelConfig::DistilBert(config)
-                }
-                _ => return Err(InvalidModelConfig("Invalid model architecture")),
-            }
-        }
-        None => return Err(InvalidModelConfig("Model architecture not found")),
-    };
-
-    Ok(config)
-}
-
-pub(crate) fn load_model<T>(vb: VarBuilder, model_config: ModelConfig) -> Result<T>
+pub(crate) fn load_model(
+    vb: VarBuilder,
+    model_config: ModelConfig,
+) -> Result<Box<dyn EmbedderModel>>
 where
-    T: Deref<Target = dyn EmbedderModel> + From<Box<dyn EmbedderModel>> + AsRef<dyn EmbedderModel>,
 {
     match model_config {
-        ModelConfig::Bert(cfg) => Ok(T::from(Box::new(BertModel::load(vb, &cfg)?))),
-        ModelConfig::JinaBert(cfg) => Ok(T::from(Box::new(JinaBertModel::new(vb, &cfg)?))),
-        ModelConfig::DistilBert(cfg) => Ok(T::from(Box::new(DistilBertModel::load(vb, &cfg)?))),
+        ModelConfig::Bert(cfg) => Ok(match cfg {
+            BertConfig::Bert(cfg_inner) => Box::new(BertModel::load(vb, &cfg_inner)?),
+            BertConfig::JinaBert(cfg_inner) => Box::new(JinaBertModel::new(vb, &cfg_inner)?),
+        }),
+        ModelConfig::DistilBert(cfg) => Ok(Box::new(DistilBertModel::load(vb, &cfg)?)),
     }
 }
 
-/// Load models.
-pub(crate) fn load_pretrained_model<T>(
-    model_path: &Path,
-    config_path: &Path,
+pub(crate) fn load_pretrained_model(
+    model_root: &Path,
     device: &Device,
-) -> Result<T>
-where
-    T: Deref<Target = dyn EmbedderModel> + From<Box<dyn EmbedderModel>> + AsRef<dyn EmbedderModel>,
-{
-    let config_str = std::fs::read_to_string(config_path)?;
-    let model_config = parse_config(&config_str)?;
+) -> Result<(Box<dyn EmbedderModel>, ModelType)> {
+    // TODO: Support other weight formats
+    let safetensors_path = model_root.join("model.safetensors");
+    let ModelDefinition {
+        model_config,
+        model_type,
+    } = parse_config(model_root, None)?;
 
-    // TODO: Make DType configurable
-    let vb = unsafe { VarBuilder::from_mmaped_safetensors(&[model_path], DType::F32, device)? };
-    load_model::<T>(vb, model_config)
+    let vb =
+        unsafe { VarBuilder::from_mmaped_safetensors(&[safetensors_path], DType::F32, device)? };
+
+    Ok((load_model(vb, model_config)?, model_type))
 }
 
-/// Trait for embedding models
+/// Trait for embedder models
 pub trait EmbedderModel: Send + Sync {
     fn encode(&self, token_ids: &Tensor) -> Result<Tensor>;
+
+    #[inline]
+    fn encode_with_pooling(
+        &self,
+        token_ids: &Tensor,
+        pool_fn: fn(&Tensor) -> Result<Tensor>,
+    ) -> Result<Tensor> {
+        let embeddings = &self.encode(token_ids)?;
+
+        pool_fn(embeddings)
+    }
 
     fn get_device(&self) -> &Device;
 }
@@ -145,6 +107,12 @@ impl EmbedderModel for DistilBertModel {
     }
 }
 
+#[derive(Debug)]
+pub struct EmbedOutput {
+    pub embeddings: Tensor,
+    pub usage: Usage,
+}
+
 /// Encodes a batch of sentences by tokenizing them and running encoding them with the model,
 /// and returns the embeddings along with the usage statistics.
 ///
@@ -167,9 +135,9 @@ pub(crate) fn encode_batch_with_usage<'s, E>(
     model: &dyn EmbedderModel,
     tokenizer: &Tokenizer,
     sentences: Vec<E>,
-    pooling_strategy: PoolingStrategy,
+    model_type: &ModelType,
     normalize: bool,
-) -> Result<(Tensor, Usage)>
+) -> Result<EmbedOutput>
 where
     E: Into<EncodeInput<'s>> + Send,
 {
@@ -193,30 +161,42 @@ where
 
     let token_ids = Tensor::stack(&token_ids, 0)?;
 
-    let pad_id: u32 = {
-        match tokenizer.get_padding() {
-            Some(pp) => pp.pad_id,
-            None => 0,
+    tracing::trace!("running inference on batch {:?}", token_ids.shape());
+
+    // let embeddings = model.encode(&token_ids)?;
+    let embeddings = model.encode(&token_ids)?;
+
+    let pooling_strategy = match model_type {
+        ModelType::Classifier => &PoolingStrategy::Cls, // TODO: Is this correct?
+        ModelType::Embedding(ps) => ps,
+    };
+
+    let embeddings = match pooling_strategy {
+        PoolingStrategy::Cls => embeddings.i((.., 0))?,
+        PoolingStrategy::Mean => {
+            let pad_id = tokenizer.get_padding().map_or(0, |pp| pp.pad_id);
+
+            let attention_mask = token_ids
+                .ne(pad_id)?
+                .unsqueeze(D::Minus1)?
+                .to_dtype(embeddings.dtype())?;
+
+            embeddings.broadcast_mul(&attention_mask)?.sum(1)?
+        }
+        PoolingStrategy::Splade => panic!("SPLADE is not yet implemented."),
+    };
+
+    // Normalize embeddings (if required)
+    let embeddings = {
+        if normalize {
+            normalize_l2(&embeddings)?
+        } else {
+            embeddings
         }
     };
 
-    let pad_mask = token_ids.ne(pad_id)?;
-
-    tracing::trace!("running inference on batch {:?}", token_ids.shape());
-    let embeddings = model.encode(&token_ids)?;
     tracing::trace!("generated embeddings {:?}", embeddings.shape());
-
-    // Apply pooling
-    let pooled_embeddings = pool_embeddings(&embeddings, &pad_mask, pooling_strategy)?;
-
-    // Normalize embeddings (if required)
-    let embeddings = if normalize {
-        normalize_l2(&pooled_embeddings)?
-    } else {
-        pooled_embeddings
-    };
-
-    Ok((embeddings, usage))
+    Ok(EmbedOutput { embeddings, usage })
 }
 
 /// Encodes a batch of sentences using the given `model` and `tokenizer`.
@@ -233,55 +213,34 @@ pub(crate) fn encode_batch<'s, E>(
     model: &dyn EmbedderModel,
     tokenizer: &Tokenizer,
     sentences: Vec<E>,
-    pooling_strategy: PoolingStrategy,
+    model_type: &ModelType,
     normalize: bool,
 ) -> Result<Tensor>
 where
     E: Into<EncodeInput<'s>> + Send,
 {
-    let (out, _) =
-        encode_batch_with_usage(model, tokenizer, sentences, pooling_strategy, normalize)?;
-    Ok(out)
-}
+    let embed_output = encode_batch_with_usage(model, tokenizer, sentences, model_type, normalize)?;
 
-#[cfg(test)]
-pub(crate) fn load_random_model<T>(model_config: ModelConfig, device: &Device) -> Result<T>
-where
-    T: Deref<Target = dyn EmbedderModel> + From<Box<dyn EmbedderModel>> + AsRef<dyn EmbedderModel>,
-{
-    let varmap = VarMap::new();
-    let vb = VarBuilder::from_varmap(&varmap, DType::F32, device);
-
-    load_model::<T>(vb, model_config)
-}
-
-#[cfg(test)]
-pub(crate) fn load_zeros_model<T>(model_config: ModelConfig, device: &Device) -> Result<T>
-where
-    T: Deref<Target = dyn EmbedderModel> + From<Box<dyn EmbedderModel>> + AsRef<dyn EmbedderModel>,
-{
-    // TODO: Make DType configurable
-    let vb = VarBuilder::zeros(DType::F32, device);
-    load_model::<T>(vb, model_config)
+    Ok(embed_output.embeddings)
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::config::model::ModelType;
 
-    const BERT_CONFIG_PATH: &str = "tests/fixtures/all-MiniLM-L6-v2/config.json";
-    const JINABERT_CONFIG_PATH: &str = "tests/fixtures/jina-embeddings-v2-base-en/config.json";
-    const DISTILBERT_CONFIG_PATH: &str = "tests/fixtures/multi-qa-distilbert-dot-v1/config.json";
+    const BERT_PATH: &str = "tests/fixtures/all-MiniLM-L6-v2/";
+    const JINABERT_PATH: &str = "tests/fixtures/jina-embeddings-v2-base-en/";
+    const DISTILBERT_PATH: &str = "tests/fixtures/multi-qa-distilbert-dot-v1/";
 
     #[test]
     fn test_parse_config_bert() -> Result<()> {
-        let path = Path::new(BERT_CONFIG_PATH);
-        let config_str = std::fs::read_to_string(path)?;
+        let path = Path::new(BERT_PATH);
 
-        let config = parse_config(&config_str)?;
+        let config = parse_config(path, None)?;
 
-        match config {
-            ModelConfig::Bert(_) => {}
+        match config.model_type {
+            ModelType::Embedding(_) => {}
             _ => panic!("Invalid config type"),
         }
 
@@ -290,14 +249,12 @@ mod test {
 
     #[test]
     fn test_parse_config_jinabert() -> Result<()> {
-        let path = Path::new(JINABERT_CONFIG_PATH);
+        let path = Path::new(JINABERT_PATH);
 
-        let config_str = std::fs::read_to_string(path)?;
+        let config = parse_config(path, None)?;
 
-        let config = parse_config(&config_str)?;
-
-        match config {
-            ModelConfig::JinaBert(_) => {}
+        match config.model_type {
+            ModelType::Embedding(_) => {}
             _ => panic!("Invalid config type"),
         }
 
@@ -306,79 +263,17 @@ mod test {
 
     #[test]
     fn test_parse_config_distilbert() -> Result<()> {
-        let path = Path::new(DISTILBERT_CONFIG_PATH);
+        let path = Path::new(DISTILBERT_PATH);
 
-        let config_str = std::fs::read_to_string(path)?;
+        let config = parse_config(path, None)?;
 
-        let config = parse_config(&config_str)?;
-
-        match config {
-            ModelConfig::DistilBert(_) => {}
-            _ => panic!("Invalid config type"),
+        match config.model_type {
+            ModelType::Embedding(ps) => match ps {
+                PoolingStrategy::Cls => {}
+                _ => panic!("Invalid pooling type"),
+            },
+            _ => panic!("Invalid model type"),
         }
-
-        Ok(())
-    }
-
-    #[test]
-    fn test_forward_bert() -> Result<()> {
-        let device = &Device::Cpu;
-        let path = Path::new(BERT_CONFIG_PATH);
-
-        let config_str = std::fs::read_to_string(path)?;
-        let config = parse_config(&config_str)?;
-
-        let model: Box<_> = load_random_model(config, device)?;
-
-        let token_ids = Tensor::zeros(&[1, 128], DType::U32, device)?;
-
-        let embeddings = model.encode(&token_ids)?;
-
-        let (_n_sentence, out_tokens, _hidden_size) = embeddings.dims3()?;
-
-        assert_eq!(out_tokens, 128);
-
-        Ok(())
-    }
-
-    #[test]
-    fn test_forward_jinabert() -> Result<()> {
-        let device = &Device::Cpu;
-        let path = Path::new(JINABERT_CONFIG_PATH);
-
-        let config_str = std::fs::read_to_string(path)?;
-        let config = parse_config(&config_str)?;
-
-        let model: Box<dyn EmbedderModel> = load_random_model(config, device)?;
-
-        let token_ids = Tensor::zeros(&[1, 128], DType::U32, device)?;
-
-        let embeddings = model.encode(&token_ids)?;
-
-        let (_n_sentence, out_tokens, _hidden_size) = embeddings.dims3()?;
-
-        assert_eq!(out_tokens, 128);
-
-        Ok(())
-    }
-
-    #[test]
-    fn test_forward_distilbert() -> Result<()> {
-        let device = &Device::Cpu;
-        let path = Path::new(DISTILBERT_CONFIG_PATH);
-
-        let config_str = std::fs::read_to_string(path)?;
-        let config = parse_config(&config_str)?;
-
-        let model: Box<dyn EmbedderModel> = load_random_model(config, device)?;
-
-        let token_ids = Tensor::zeros(&[1, 128], DType::U32, device)?;
-
-        let embeddings = model.encode(&token_ids)?;
-
-        let (_n_sentence, out_tokens, _hidden_size) = embeddings.dims3()?;
-
-        assert_eq!(out_tokens, 128);
 
         Ok(())
     }

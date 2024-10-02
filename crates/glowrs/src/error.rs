@@ -4,22 +4,36 @@ use thiserror::Error;
 pub enum Error {
     #[error("Invalid model name: {0}")]
     InvalidModelName(&'static str),
+
     #[error("Model load error: {0}")]
     ModelLoad(&'static str),
+
+    #[error("Invalid argument: {0}")]
+    InvalidArgument(&'static str),
+
     #[error("Invalid model architecture: {0}")]
     InvalidModelConfig(&'static str),
+
     #[error("Inference error: {0}")]
     InferenceError(&'static str),
+
     #[error("Candle error: {0}")]
     Candle(#[from] candle_core::Error),
+
     #[error("Tokenization error: {0}")]
     Tokenization(#[from] tokenizers::Error),
+
     #[error("Serde JSON error: {0}")]
     Serde(#[from] serde_json::Error),
+
     #[error("IO error: {0}")]
     IO(#[from] std::io::Error),
+
     #[error("HF Hub error: {0}")]
     HFHub(#[from] hf_hub::api::sync::ApiError),
+
+    #[error("Generic error: {0}")]
+    Generic(#[from] anyhow::Error),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

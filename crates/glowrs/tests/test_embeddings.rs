@@ -3,7 +3,7 @@ use serde::Deserialize;
 use std::process::ExitCode;
 
 use glowrs::model::utils::normalize_l2;
-use glowrs::{PoolingStrategy, Result};
+use glowrs::Result;
 
 #[derive(Deserialize)]
 struct EmbeddingsExample {
@@ -32,8 +32,7 @@ fn test_similarity_sentence_transformers() -> Result<ExitCode> {
         let encoder = glowrs::SentenceTransformer::from_repo_string(&fixture.model, &device)?;
         println!("Loaded model: {}", &fixture.model);
         for example in fixture.examples {
-            let embedding =
-                encoder.encode_batch(vec![example.sentence], false, PoolingStrategy::Mean)?;
+            let embedding = encoder.encode_batch(vec![example.sentence], false)?;
             let embedding = normalize_l2(&embedding)?;
 
             let expected_dim = example.embedding.len();
