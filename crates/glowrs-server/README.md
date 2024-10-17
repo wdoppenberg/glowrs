@@ -11,19 +11,19 @@
 Example usage with the `jina-embeddings-v2-base-en` model:
 
 ```bash
-cargo run --bin server --release -- --model-repo jinaai/jina-embeddings-v2-base-en
+cargo run --bin server --release -- --core-repo jinaai/jina-embeddings-v2-base-en
 ```
 
 If you want to use a certain revision of the model, you can append it to the repository name like so.
 
 ```bash
-cargo run --bin server --release -- --model-repo jinaai/jina-embeddings-v2-base-en:main
+cargo run --bin server --release -- --core-repo jinaai/jina-embeddings-v2-base-en:main
 ```
 
 If you want to run multiple models, you can run multiple instances of the server with different model repos.
 
 ```bash
-cargo run --bin server --release -- --model-repo jinaai/jina-embeddings-v2-base-en sentence-transformers/paraphrase-multilingual-mpnet-base-v2
+cargo run --bin server --release -- --core-repo jinaai/jina-embeddings-v2-base-en sentence-transformers/paraphrase-multilingual-mpnet-base-v2
 ```
 
 **Warning:** This is not supported with `metal` acceleration for now. 
@@ -34,7 +34,7 @@ cargo run --bin server --release -- --model-repo jinaai/jina-embeddings-v2-base-
 Usage: server [OPTIONS]
 
 Options:
-  -m, --model-repo <MODEL_REPO>  
+  -m, --core-repo <MODEL_REPO>  
   -r, --revision <REVISION>      [default: main]
   -h, --help                     Print help
 ```
@@ -62,7 +62,7 @@ curl -X POST http://localhost:3000/v1/embeddings \
   -H "Content-Type: application/json" \
   -d '{
     "input": ["The food was delicious and the waiter...", "was too"], 
-    "model": "jina-embeddings-v2-base-en",
+    "core": "jina-embeddings-v2-base-en",
     "encoding_format": "float"
   }'
 ```

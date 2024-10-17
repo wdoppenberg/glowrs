@@ -1,18 +1,18 @@
 #![doc = include_str!("../README.md")]
 
+pub mod core;
 mod error;
 mod exports;
-pub mod model;
 
-pub(crate) mod config;
 pub(crate) mod pooling;
 
 pub use exports::*;
 
 pub use crate::error::{Error, Result};
 
-pub use model::sentence_transformer::SentenceTransformer;
+pub use core::sentence_transformer::SentenceTransformer;
 pub use pooling::PoolingStrategy;
+
 use serde::Serialize;
 
 #[derive(Debug, Serialize, PartialEq, Default)]

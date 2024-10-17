@@ -10,7 +10,7 @@ use tower_http::timeout::TimeoutLayer;
 use tower_http::trace::TraceLayer;
 
 use clap::Args;
-use glowrs::model::device::DEVICE;
+use glowrs::core::device::DEVICE;
 use thiserror::__private::AsDisplay;
 use tracing::{info_span, Span};
 

@@ -13,7 +13,10 @@ Python library for sentence embeddings and features a wide range of models and u
 use glowrs::{SentenceTransformer, Device, PoolingStrategy, Error};
 
 fn main() -> Result<(), Error> {
-    let encoder = SentenceTransformer::from_repo_string("sentence-transformers/all-MiniLM-L6-v2", &Device::Cpu)?;
+    let encoder = SentenceTransformer::builder()
+        .with_model_repo("sentence-transformers/all-MiniLM-L6-v2")?
+        .with_device(Device::Cpu)
+        .build()?;
 
     let sentences = vec![
         "Hello, how are you?",
@@ -27,7 +30,6 @@ fn main() -> Result<(), Error> {
     Ok(())
 }
 ```
-
 
 ## Features
  
@@ -46,19 +48,19 @@ fn main() -> Result<(), Error> {
 Example usage with the `jina-embeddings-v2-base-en` model:
 
 ```bash
-cargo run --bin glowrs-server --release -- --model-repo jinaai/jina-embeddings-v2-base-en
+cargo run --bin glowrs-server --release -- --core-repo jinaai/jina-embeddings-v2-base-en
 ```
 
 If you want to use a certain revision of the model, you can append it to the repository name like so.
 
 ```bash
-cargo run --bin glowrs-server --release -- --model-repo jinaai/jina-embeddings-v2-base-en:main
+cargo run --bin glowrs-server --release -- --core-repo jinaai/jina-embeddings-v2-base-en:main
 ```
 
 If you want to run multiple models, you can run multiple instances of the glowrs-server with different model repos.
 
 ```bash
-cargo run --bin glowrs-server --release -- --model-repo jinaai/jina-embeddings-v2-base-en sentence-transformers/paraphrase-multilingual-mpnet-base-v2
+cargo run --bin glowrs-server --release -- --core-repo jinaai/jina-embeddings-v2-base-en sentence-transformers/paraphrase-multilingual-mpnet-base-v2
 ```
 
 **Warning:** This is not supported with `metal` acceleration for now. 
@@ -69,7 +71,7 @@ cargo run --bin glowrs-server --release -- --model-repo jinaai/jina-embeddings-v
 Usage: glowrs-server [OPTIONS]
 
 Options:
-  -m, --model-repo <MODEL_REPO>  
+  -m, --core-repo <MODEL_REPO>  
   -r, --revision <REVISION>      [default: main]
   -h, --help                     Print help
 ```
@@ -85,7 +87,7 @@ Options:
 For now the docker image only supports CPU on x86 and arm64. 
 
 ```shell
-docker run -p 3000:3000 ghcr.io/wdoppenberg/glowrs-server:latest --model-repo <MODEL_REPO>
+docker run -p 3000:3000 ghcr.io/wdoppenberg/glowrs-server:latest --core-repo <MODEL_REPO>
 ```
 
 
@@ -106,7 +108,7 @@ curl -X POST http://localhost:3000/v1/embeddings \
   -H "Content-Type: application/json" \
   -d '{
     "input": ["The food was delicious and the waiter...", "was too"], 
-    "model": "sentence-transformers/all-MiniLM-L6-v2",
+    "core": "sentence-transformers/all-MiniLM-L6-v2",
     "encoding_format": "float"
   }'
 ```

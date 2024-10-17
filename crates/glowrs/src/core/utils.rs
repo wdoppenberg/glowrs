@@ -27,12 +27,19 @@ pub fn parse_repo_string(repo_string: &str) -> Result<(&str, &str)> {
 
     // Split the repo string by colon
     let parts: Vec<&str> = repo_string.split(':').collect();
-    let model_repo = parts[0];
-    let mut revision = *parts.get(1).unwrap_or(&"main");
 
-    // If revision is an empty string, set it to "main"
-    if revision.is_empty() {
-        revision = "main";
+    if parts.is_empty() {
+        return Err(InvalidModelName("Model repository string is invalid"));
+    }
+
+    let model_repo = parts.first().copied().unwrap_or("");
+    let revision = parts
+        .get(1)
+        .filter(|&&rev| !rev.is_empty())
+        .unwrap_or(&"main");
+
+    if model_repo.is_empty() {
+        return Err(InvalidModelName("Model repository string is invalid"));
     }
 
     Ok((model_repo, revision))

@@ -8,7 +8,10 @@ The `glowrs` library provides an easy and familiar interface to use pre-trained 
 use glowrs::{SentenceTransformer, Device, PoolingStrategy, Error};
 
 fn main() -> Result<(), Error> {
-    let encoder = SentenceTransformer::from_repo_string("sentence-transformers/all-MiniLM-L6-v2", &Device::Cpu)?;
+    let encoder = SentenceTransformer::builder()
+        .with_model_repo("sentence-transformers/all-MiniLM-L6-v2")?
+        .with_device(Device::Cpu)
+        .build()?;
 
     let sentences = vec![
         "Hello, how are you?",

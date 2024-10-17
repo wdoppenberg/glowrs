@@ -32,7 +32,7 @@ if __name__ == "__main__":
 	out = {
 		"fixtures": [
 			{
-				"model": m,
+				"core": m,
 				"examples": generate_examples(m)
 
 			} for m in MODELS]

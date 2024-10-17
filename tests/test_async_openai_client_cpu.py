@@ -14,12 +14,12 @@ openai_client = AsyncOpenAI(
 
 async def create_embeddings() -> tuple[CreateEmbeddingResponse, ...]:
 	embeddings = await openai_client.embeddings.create(
-		input=["This is a sentence that requires a model and is quite long for a normal sentence"] * 5,
+		input=["This is a sentence that requires a core and is quite long for a normal sentence"] * 5,
 		model="sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
 	)
 
 	embeddings_jina = await openai_client.embeddings.create(
-		input=["This is a sentence that requires a model and is quite long for a normal sentence"] * 5,
+		input=["This is a sentence that requires a core and is quite long for a normal sentence"] * 5,
 		model="jinaai/jina-embeddings-v2-base-en",
 	)
 
@@ -47,7 +47,7 @@ async def main():
 
 	try:
 		await openai_client.embeddings.create(
-			input=["This is a sentence that requires a model and is quite long for a normal sentence"] * 5,
+			input=["This is a sentence that requires a core and is quite long for a normal sentence"] * 5,
 			model="does-not-exist",
 		)
 	except openai.NotFoundError as e:

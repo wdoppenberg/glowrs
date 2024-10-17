@@ -32,7 +32,7 @@ pub async fn list_models(
         .map(|model_name| {
             ModelCard {
                 id: model_name.clone(),
-                object: "model".to_string(),
+                object: "core".to_string(),
                 // This is a placeholder for the actual creation time
                 created: SystemTime::now()
                     .duration_since(UNIX_EPOCH)
@@ -62,7 +62,7 @@ pub async fn get_model(
 
     let model_card = ModelCard {
         id: model_id.clone(),
-        object: "model".to_string(),
+        object: "core".to_string(),
         // This is a placeholder for the actual creation time
         created: SystemTime::now()
             .duration_since(UNIX_EPOCH)

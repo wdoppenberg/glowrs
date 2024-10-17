@@ -1,7 +1,6 @@
 use candle_core::{DType, Device, IndexOp, Module, Tensor, D};
 use candle_nn::VarBuilder;
 
-use std::path::Path;
 use tokenizers::{EncodeInput, Tokenizer};
 
 // Re-exports
@@ -9,42 +8,40 @@ pub use candle_transformers::models::{
     bert::BertModel, distilbert::DistilBertModel, jina_bert::BertModel as JinaBertModel,
 };
 
-use crate::config::model::{BertConfig, ModelConfig, ModelDefinition, ModelType};
-use crate::config::parse::parse_config;
-use crate::model::utils::normalize_l2;
+use crate::core::config::model::{BertConfig, EmbedderConfig, ModelType};
+use crate::core::repo::ModelWeightsPath;
+use crate::core::utils::normalize_l2;
 use crate::pooling::PoolingStrategy;
 use crate::{Result, Usage};
 
 pub(crate) fn load_model(
     vb: VarBuilder,
-    model_config: ModelConfig,
+    model_config: EmbedderConfig,
 ) -> Result<Box<dyn EmbedderModel>>
 where
 {
     match model_config {
-        ModelConfig::Bert(cfg) => Ok(match cfg {
+        EmbedderConfig::Bert(cfg) => Ok(match cfg {
             BertConfig::Bert(cfg_inner) => Box::new(BertModel::load(vb, &cfg_inner)?),
             BertConfig::JinaBert(cfg_inner) => Box::new(JinaBertModel::new(vb, &cfg_inner)?),
         }),
-        ModelConfig::DistilBert(cfg) => Ok(Box::new(DistilBertModel::load(vb, &cfg)?)),
+        EmbedderConfig::DistilBert(cfg) => Ok(Box::new(DistilBertModel::load(vb, &cfg)?)),
     }
 }
 
 pub(crate) fn load_pretrained_model(
-    model_root: &Path,
+    model_weights_path: ModelWeightsPath,
+    model_config: EmbedderConfig,
     device: &Device,
-) -> Result<(Box<dyn EmbedderModel>, ModelType)> {
-    // TODO: Support other weight formats
-    let safetensors_path = model_root.join("model.safetensors");
-    let ModelDefinition {
-        model_config,
-        model_type,
-    } = parse_config(model_root, None)?;
+) -> Result<Box<dyn EmbedderModel>> {
+    let vb = match model_weights_path {
+        ModelWeightsPath::Pth(path) => VarBuilder::from_pth(&path, DType::F32, device)?,
+        ModelWeightsPath::Safetensors(path) => unsafe {
+            VarBuilder::from_mmaped_safetensors(&[path], DType::F32, device)?
+        },
+    };
 
-    let vb =
-        unsafe { VarBuilder::from_mmaped_safetensors(&[safetensors_path], DType::F32, device)? };
-
-    Ok((load_model(vb, model_config)?, model_type))
+    load_model(vb, model_config)
 }
 
 /// Trait for embedder models
@@ -113,12 +110,12 @@ pub struct EmbedOutput {
     pub usage: Usage,
 }
 
-/// Encodes a batch of sentences by tokenizing them and running encoding them with the model,
+/// Encodes a batch of sentences by tokenizing them and running encoding them with the core,
 /// and returns the embeddings along with the usage statistics.
 ///
 /// # Arguments
 ///
-/// * `model` - A reference to a `dyn EmbedderModel` trait object.
+/// * `core` - A reference to a `dyn EmbedderModel` trait object.
 /// * `tokenizer` - A reference to a `Tokenizer`.
 /// * `sentences` - A collection of sentences to encode.
 /// * `normalize` - A boolean flag indicating whether to normalize the embeddings or not.
@@ -141,7 +138,7 @@ pub(crate) fn encode_batch_with_usage<'s, E>(
 where
     E: Into<EncodeInput<'s>> + Send,
 {
-    let tokens = tokenizer.encode_batch(sentences, true)?;
+    let tokens = tokenizer.encode_batch_fast(sentences, true)?;
 
     let prompt_tokens = tokens.len() as u32;
 
@@ -163,7 +160,7 @@ where
 
     tracing::trace!("running inference on batch {:?}", token_ids.shape());
 
-    // let embeddings = model.encode(&token_ids)?;
+    // let embeddings = core.encode(&token_ids)?;
     let embeddings = model.encode(&token_ids)?;
 
     let pooling_strategy = match model_type {
@@ -199,10 +196,10 @@ where
     Ok(EmbedOutput { embeddings, usage })
 }
 
-/// Encodes a batch of sentences using the given `model` and `tokenizer`.
+/// Encodes a batch of sentences using the given `core` and `tokenizer`.
 ///
 /// # Arguments
-/// * `model` - A reference to the embedding model to use.
+/// * `core` - A reference to the embedding core to use.
 /// * `tokenizer` - A reference to the tokenizer to use.
 /// * `sentences` - The sentences to encode.
 /// * `normalize` - A flag indicating whether to normalize the embeddings.
@@ -227,7 +224,8 @@ where
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::config::model::ModelType;
+    use crate::core::repo::ModelRepo;
+    use std::path::Path;
 
     const BERT_PATH: &str = "tests/fixtures/all-MiniLM-L6-v2/";
     const JINABERT_PATH: &str = "tests/fixtures/jina-embeddings-v2-base-en/";
@@ -237,7 +235,9 @@ mod test {
     fn test_parse_config_bert() -> Result<()> {
         let path = Path::new(BERT_PATH);
 
-        let config = parse_config(path, None)?;
+        let model_repo = ModelRepo::from_path(path);
+
+        let config = model_repo.get_config()?;
 
         match config.model_type {
             ModelType::Embedding(_) => {}
@@ -251,7 +251,9 @@ mod test {
     fn test_parse_config_jinabert() -> Result<()> {
         let path = Path::new(JINABERT_PATH);
 
-        let config = parse_config(path, None)?;
+        let model_repo = ModelRepo::from_path(path);
+
+        let config = model_repo.get_config()?;
 
         match config.model_type {
             ModelType::Embedding(_) => {}
@@ -265,14 +267,16 @@ mod test {
     fn test_parse_config_distilbert() -> Result<()> {
         let path = Path::new(DISTILBERT_PATH);
 
-        let config = parse_config(path, None)?;
+        let model_repo = ModelRepo::from_path(path);
+
+        let config = model_repo.get_config()?;
 
         match config.model_type {
             ModelType::Embedding(ps) => match ps {
                 PoolingStrategy::Cls => {}
                 _ => panic!("Invalid pooling type"),
             },
-            _ => panic!("Invalid model type"),
+            _ => panic!("Invalid core type"),
         }
 
         Ok(())
