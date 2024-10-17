@@ -1,6 +1,6 @@
 use anyhow::Result;
 use candle_core::Device;
-use glowrs::model::utils::parse_repo_string;
+use glowrs::core::utils::parse_repo_string;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -8,7 +8,7 @@ use crate::server::infer::embed::EmbeddingsClient;
 use crate::server::infer::embed::EmbeddingsHandler;
 use crate::server::infer::DedicatedExecutor;
 
-// TODO: Create a struct to hold the model map
+// TODO: Create a struct to hold the core map
 // TODO: Needs to support externally provided models (e.g. other gRPC services)
 type EmbeddingModelMap =
     HashMap<String, (EmbeddingsClient, Arc<DedicatedExecutor<EmbeddingsHandler>>)>;

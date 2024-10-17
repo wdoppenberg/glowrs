@@ -35,7 +35,7 @@ impl EmbeddingsResponse {
             .into_iter()
             .enumerate()
             .map(|(index, embedding)| InnerEmbeddingsResponse {
-                object: "model".to_string(),
+                object: "core".to_string(),
                 embedding,
                 index: index as u32,
             })

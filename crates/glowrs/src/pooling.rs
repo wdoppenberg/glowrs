@@ -7,15 +7,15 @@ use clap::ValueEnum;
 ///
 /// Source: `text-embeddings-inference`: [`backends/candle/src/lib.rs`](https://github.com/huggingface/text-embeddings-inference/blob/7e55c61c2a39612ade5db9b929ffc883913ae0f3/backends/candle/src/lib.rs)
 #[cfg_attr(feature = "clap", derive(ValueEnum))]
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum PoolingStrategy {
     /// Select the CLS token as embedding
     Cls,
-    /// Apply Mean pooling to the model embeddings
+    /// Apply Mean pooling to the core embeddings
     Mean,
-    /// Apply SPLADE (Sparse Lexical and Expansion) to the model embeddings.
-    /// This option is only available if the loaded model is a `ForMaskedLM` Transformer
-    /// model.
+    /// Apply SPLADE (Sparse Lexical and Expansion) to the core embeddings.
+    /// This option is only available if the loaded core is a `ForMaskedLM` Transformer
+    /// core.
     Splade,
 }
 

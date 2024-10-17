@@ -10,7 +10,7 @@ client = OpenAI(
 
 start = time()
 print(client.embeddings.create(
-	input=["This is a sentence that requires an model"] * 50,
+	input=["This is a sentence that requires an core"] * 50,
 	model="sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
 ))
 

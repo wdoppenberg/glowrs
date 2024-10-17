@@ -2,7 +2,7 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum Error {
-    #[error("Invalid model name: {0}")]
+    #[error("Invalid core name: {0}")]
     InvalidModelName(&'static str),
 
     #[error("Model load error: {0}")]
@@ -11,11 +11,17 @@ pub enum Error {
     #[error("Invalid argument: {0}")]
     InvalidArgument(&'static str),
 
-    #[error("Invalid model architecture: {0}")]
+    #[error("Invalid core architecture: {0}")]
     InvalidModelConfig(&'static str),
 
     #[error("Inference error: {0}")]
     InferenceError(&'static str),
+
+    #[error("Invalid HF repo string")]
+    InvalidRepoString(&'static str),
+
+    #[error("No pooling configuration")]
+    NoPoolingConfiguration(&'static str),
 
     #[error("Candle error: {0}")]
     Candle(#[from] candle_core::Error),
@@ -45,13 +51,13 @@ mod test {
     #[test]
     fn test_error_display() {
         let error = Error::InvalidModelName("test");
-        assert_eq!(error.to_string(), "Invalid model name: test");
+        assert_eq!(error.to_string(), "Invalid core name: test");
 
         let error = Error::ModelLoad("test");
         assert_eq!(error.to_string(), "Model load error: test");
 
         let error = Error::InvalidModelConfig("test");
-        assert_eq!(error.to_string(), "Invalid model architecture: test");
+        assert_eq!(error.to_string(), "Invalid core architecture: test");
 
         let error = Error::Candle(candle_core::Error::UnexpectedNumberOfDims {
             shape: (32, 32).into(),

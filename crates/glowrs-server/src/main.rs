@@ -5,7 +5,7 @@ use std::process::ExitCode;
 use tokio::net::TcpListener;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-use glowrs::model::device::print_device_info;
+use glowrs::core::device::print_device_info;
 
 mod server;
 use server::utils;

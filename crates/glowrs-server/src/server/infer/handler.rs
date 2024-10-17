@@ -70,7 +70,7 @@ where
 #[cfg(test)]
 mod test {
     use candle_core::Tensor;
-    use glowrs::model::device::DEVICE;
+    use glowrs::core::device::DEVICE;
 
     use crate::server::infer::client::Client;
     use crate::server::infer::handler::CustomFnRequestHandler;

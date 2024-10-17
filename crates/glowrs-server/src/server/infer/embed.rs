@@ -2,7 +2,7 @@ use crate::server::data_models::{EmbeddingsRequest, EmbeddingsResponse};
 use crate::server::infer::client::Client;
 use crate::server::infer::handler::RequestHandler;
 use crate::server::infer::DedicatedExecutor;
-use glowrs::model::embedder::EmbedOutput;
+use glowrs::core::embedder::EmbedOutput;
 use glowrs::{Device, SentenceTransformer};
 
 pub struct EmbeddingsHandler {
@@ -16,9 +16,12 @@ impl EmbeddingsHandler {
         }
     }
     pub fn from_repo_string(model_repo: &str, device: &Device) -> anyhow::Result<Self> {
-        tracing::info!("Loading model: {}. Wait for model load.", model_repo);
+        tracing::info!("Loading core: {}. Wait for core load.", model_repo);
 
-        let sentence_transformer = SentenceTransformer::from_repo_string(model_repo, device)?;
+        let sentence_transformer = SentenceTransformer::builder()
+            .with_model_repo(model_repo)?
+            .with_device(device.clone())
+            .build()?;
 
         tracing::info!("Model loaded");
 

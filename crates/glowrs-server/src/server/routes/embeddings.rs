@@ -54,7 +54,7 @@ pub async fn infer_text_embeddings(
 //         );
 //         let embeddings_request = EmbeddingsRequest {
 //             input: Sentences::from(Vec::from(["sentence sentence sentence"; 5])),
-//             model: "whatever".to_string(),
+//             core: "whatever".to_string(),
 //             encoding_format: Some(Float),
 //             dimensions: None,
 //             user: None

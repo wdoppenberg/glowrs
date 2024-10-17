@@ -1,10 +1,11 @@
+use glowrs::PoolingStrategy;
 #[allow(dead_code, unused_imports)]
 use std::error::Error;
 
 #[cfg(feature = "clap")]
 fn main() -> Result<(), Box<dyn Error>> {
     use clap::Parser;
-    use glowrs::{Device, PoolingStrategy, SentenceTransformer};
+    use glowrs::{Device, SentenceTransformer};
     use tracing_subscriber::prelude::*;
 
     #[derive(Debug, Parser)]
@@ -35,16 +36,20 @@ fn main() -> Result<(), Box<dyn Error>> {
                 eprintln!("No environment variables found that can initialize tracing_subscriber::EnvFilter. Using defaults.");
                 // axum logs rejections from built-in extractors with the `axum::rejection`
                 // target, at `TRACE` level. `axum::rejection=trace` enables showing those events
-                format!("glowrs={},tower_http=debug,axum::rejection=trace", app.log_level).into()
+                format!("glowrs={}", app.log_level).into()
             }),
         )
         .with(tracing_subscriber::fmt::layer()).init();
 
-    println!("Using model {}", app.model_repo);
+    println!("Using core {}", app.model_repo);
     let device = Device::Cpu;
-    let encoder = SentenceTransformer::from_repo_string(&app.model_repo, &device)?;
 
-    let pooling_strategy = Some(PoolingStrategy::Mean);
+    let encoder = SentenceTransformer::builder()
+        .with_model_repo(&app.model_repo)?
+        .with_device(device)
+        .with_pooling_strategy(PoolingStrategy::Mean)
+        .build()?;
+
     let embeddings = encoder.encode_batch(sentences.into(), false)?;
     println!("Embeddings: {:?}", embeddings);
 
@@ -55,9 +60,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         let e_i = embeddings.get(i)?;
         for j in (i + 1)..n_sentences {
             let e_j = embeddings.get(j)?;
-            let sum_ij = (&e_i * &e_j)?.sum_all()?.to_scalar::<f32>()?;
-            let sum_i2 = (&e_i * &e_i)?.sum_all()?.to_scalar::<f32>()?;
-            let sum_j2 = (&e_j * &e_j)?.sum_all()?.to_scalar::<f32>()?;
+            let sum_ij: f32 = (&e_i * &e_j)?.sum_all()?.to_scalar()?;
+            let sum_i2: f32 = (&e_i * &e_i)?.sum_all()?.to_scalar()?;
+            let sum_j2: f32 = (&e_j * &e_j)?.sum_all()?.to_scalar()?;
             let cosine_similarity = sum_ij / (sum_i2 * sum_j2).sqrt();
             similarities.push((cosine_similarity, i, j))
         }
