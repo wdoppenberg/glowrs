@@ -13,7 +13,10 @@ Python library for sentence embeddings and features a wide range of models and u
 use glowrs::{SentenceTransformer, Device, PoolingStrategy, Error};
 
 fn main() -> Result<(), Error> {
-    let encoder = SentenceTransformer::from_repo("sentence-transformers/all-MiniLM-L6-v2", &Device::Cpu)?;
+    let encoder = SentenceTransformer::builder()
+        .with_model_repo("sentence-transformers/all-MiniLM-L6-v2")?
+        .with_device(Device::Cpu)
+        .build()?;
 
     let sentences = vec![
         "Hello, how are you?",
@@ -27,7 +30,6 @@ fn main() -> Result<(), Error> {
     Ok(())
 }
 ```
-
 
 ## Features
  
